@@ -1,5 +1,3 @@
-use std::ptr;
-
 use bitflags::bitflags;
 
 bitflags! {
@@ -150,19 +148,22 @@ impl Context {
         let t = self.num_items as usize;
         let l = self.num_labels as usize;
         if flag.contains(Reset::STATE) {
-            unsafe {
-                ptr::write_bytes(self.state.as_mut_ptr(), 0, t * l);
+            // FIXME: use slice::fill when it reaches stable
+            for el in &mut self.state[..t * l] {
+                *el = 0.0;
             }
         }
         if flag.contains(Reset::TRANS) {
-            unsafe {
-                ptr::write_bytes(self.trans.as_mut_ptr(), 0, l * l);
+            for el in &mut self.trans[..l * l] {
+                *el = 0.0;
             }
         }
         if self.flag.contains(Flag::MARGINALS) {
-            unsafe {
-                ptr::write_bytes(self.mexp_state.as_mut_ptr(), 0, t * l);
-                ptr::write_bytes(self.mexp_trans.as_mut_ptr(), 0, l * l);
+            for el in &mut self.mexp_state[..t * l] {
+                *el = 0.0;
+            }
+            for el in &mut self.mexp_trans[..l * l] {
+                *el = 0.0;
             }
             self.log_norm = 0.0;
         }
