@@ -8,6 +8,7 @@
 Pure Rust port of CRFsuite: a fast implementation of Conditional Random Fields (CRFs)
 
 **Currently only support prediction, model training is not supported.**
+For training you can use [crfsuite-rs](https://github.com/messense/crfsuite-rs).
 
 ## Installation
 
