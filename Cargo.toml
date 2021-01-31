@@ -1,6 +1,6 @@
 [package]
 name = "crfs"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["messense <messense@icloud.com>"]
 description = "Pure Rust port of CRFsuite: a fast implementation of Conditional Random Fields (CRFs)"
 edition = "2018"
