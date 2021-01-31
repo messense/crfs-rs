@@ -183,9 +183,7 @@ impl Context {
         // Compute the scores at (0, *)
         let current = &mut self.alpha_score;
         let state = &mut self.state;
-        for j in 0..l {
-            current[j] = state[j];
-        }
+        current[..l].clone_from_slice(&state[..l]);
         // Compute the scores at (t, *)
         for t in 1..self.num_items as usize {
             let (prev, current) = self.alpha_score.split_at_mut(l * t);
