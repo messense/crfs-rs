@@ -1,0 +1,16 @@
+[package]
+name = "crfs"
+version = "0.1.0"
+authors = ["messense <messense@icloud.com>"]
+description = "Pure Rust port of CRFsuite: a fast implementation of Conditional Random Fields (CRFs)"
+edition = "2018"
+keywords = ["crf", "crfsuite"]
+readme = "README.md"
+repository = "https://github.com/messense/crfs-rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bitflags = "1.2.1"
+cqdb = "0.4"
+libc = "0.2.84"
