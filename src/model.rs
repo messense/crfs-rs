@@ -323,6 +323,8 @@ mod tests {
         assert_eq!(0, model.header.num_features);
         assert_eq!(2, model.header.num_labels);
         assert_eq!(3, model.header.num_attrs);
+
+        let _debug = format!("{:?}", model);
     }
 
     #[test]
@@ -415,5 +417,9 @@ STATE_FEATURES = {
         ];
         let res = tagger.tag(&xseq).unwrap();
         assert_eq!(res, yseq);
+
+        let mut tagger = model.tagger().unwrap();
+        let res = tagger.tag(&[]).unwrap();
+        assert!(res.is_empty());
     }
 }
