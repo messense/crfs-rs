@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["messense <messense@icloud.com>"]
 description = "Pure Rust port of CRFsuite: a fast implementation of Conditional Random Fields (CRFs)"
 edition = "2018"
+license = "MIT"
 keywords = ["crf", "crfsuite"]
 readme = "README.md"
 repository = "https://github.com/messense/crfs-rs"
