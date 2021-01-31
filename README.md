@@ -1,7 +1,7 @@
 # crfs-rs
 
 [![CI](https://github.com/messense/crfs-rs/workflows/CI/badge.svg)](https://github.com/messense/crfs-rs/actions?query=workflow%3ACI)
-[![codecov](https://codecov.io/gh/messense/crfs-rs/branch/master/graph/badge.svg)](https://codecov.io/gh/messense/crfs-rs)
+[![codecov](https://codecov.io/gh/messense/crfs-rs/branch/main/graph/badge.svg)](https://codecov.io/gh/messense/crfs-rs)
 [![Crates.io](https://img.shields.io/crates/v/crfs.svg)](https://crates.io/crates/crfs)
 [![docs.rs](https://docs.rs/crfs/badge.svg)](https://docs.rs/crfs/)
 
