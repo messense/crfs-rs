@@ -100,6 +100,12 @@ impl<'a> Model<'a> {
             return Err(io::Error::new(io::ErrorKind::Other, "invalid model format"));
         }
         let magic = &buf[0..4];
+        if magic != b"lCRF" {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "invalid file format, magic mismatch",
+            ));
+        }
         let mut index = 4;
         let header_size = unpack_u32(&buf[index..])?;
         index += 4;
@@ -317,6 +323,20 @@ mod tests {
         assert_eq!(0, model.header.num_features);
         assert_eq!(2, model.header.num_labels);
         assert_eq!(3, model.header.num_attrs);
+    }
+
+    #[test]
+    fn test_invalid_model() {
+        let buf = b"";
+        let model = Model::new(buf);
+        assert!(model.is_err());
+
+        let mut buf = fs::read("tests/model.crfsuite").unwrap();
+        let offset = std::mem::size_of::<super::Header>();
+        let buf = &mut buf[..offset + 10];
+        buf[0] = b'L'; // change magic from lCRF to LCRF
+        let model = Model::new(buf);
+        assert!(model.is_err());
     }
 
     #[test]
