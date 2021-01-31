@@ -1,4 +1,4 @@
-use std::mem;
+use std::ptr;
 
 use bitflags::bitflags;
 
@@ -151,34 +151,18 @@ impl Context {
         let l = self.num_labels as usize;
         if flag.contains(Reset::STATE) {
             unsafe {
-                libc::memset(
-                    self.state.as_mut_ptr() as _,
-                    0,
-                    t * l * mem::size_of::<f64>(),
-                );
+                ptr::write_bytes(self.state.as_mut_ptr(), 0, t * l);
             }
         }
         if flag.contains(Reset::TRANS) {
             unsafe {
-                libc::memset(
-                    self.trans.as_mut_ptr() as _,
-                    0,
-                    l * l * mem::size_of::<f64>(),
-                );
+                ptr::write_bytes(self.trans.as_mut_ptr(), 0, l * l);
             }
         }
         if self.flag.contains(Flag::MARGINALS) {
             unsafe {
-                libc::memset(
-                    self.mexp_state.as_mut_ptr() as _,
-                    0,
-                    t * l * mem::size_of::<f64>(),
-                );
-                libc::memset(
-                    self.mexp_trans.as_mut_ptr() as _,
-                    0,
-                    l * l * mem::size_of::<f64>(),
-                );
+                ptr::write_bytes(self.mexp_state.as_mut_ptr(), 0, t * l);
+                ptr::write_bytes(self.mexp_trans.as_mut_ptr(), 0, l * l);
             }
             self.log_norm = 0.0;
         }
@@ -186,13 +170,7 @@ impl Context {
 
     pub fn exp_transition(&mut self) {
         let l = self.num_labels as usize;
-        unsafe {
-            libc::memcpy(
-                self.exp_trans.as_mut_ptr() as _,
-                self.trans.as_mut_ptr() as _,
-                l * l,
-            );
-        }
+        self.exp_trans[..l * l].copy_from_slice(&self.trans);
         for i in 0..(l * l) {
             self.exp_trans[i] = self.exp_trans[i].exp();
         }

@@ -16,7 +16,6 @@ harness = false
 [dependencies]
 bitflags = "1.2.1"
 cqdb = "0.4"
-libc = "0.2.84"
 
 [dev-dependencies]
 crfsuite = "0.3.1"
