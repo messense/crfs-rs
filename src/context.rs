@@ -194,10 +194,10 @@ impl Context {
             for j in 0..l {
                 let mut max_score = f64::MIN;
                 let mut argmax_score = None;
-                for i in 0..l {
+                for (i, prev_value) in prev.iter().enumerate().take(l) {
                     // Transit from (t-1, i) to (t, j)
                     let trans = &self.trans[l * i..];
-                    score = prev[i] + trans[j];
+                    score = prev_value + trans[j];
                     // Store this path if it has the maximum score
                     if max_score < score {
                         max_score = score;
@@ -218,9 +218,9 @@ impl Context {
         // Set a score for T-1 to be overwritten later. Just in case we don't
         // end up with something beating f64::MIN.
         let mut labels = vec![0u32; self.num_items as usize];
-        for i in 0..l {
-            if max_score < prev[i] {
-                max_score = prev[i];
+        for (i, prev_value) in prev.iter().enumerate().take(l) {
+            if max_score < *prev_value {
+                max_score = *prev_value;
                 // Tag the item #T
                 labels[self.num_items as usize - 1] = i as u32;
             }
