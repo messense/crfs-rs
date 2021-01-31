@@ -5,6 +5,7 @@ use std::{
     mem,
 };
 
+use bstr::ByteSlice;
 use cqdb::CQDB;
 
 use crate::feature::{Feature, FeatureRefs};
@@ -167,7 +168,7 @@ impl<'a> Model<'a> {
 
     /// Convert a label ID to label string
     pub fn to_label(&self, lid: u32) -> Option<&str> {
-        self.labels.to_str(lid)
+        self.labels.to_str(lid).and_then(|s| s.to_str().ok())
     }
 
     /// Convert a label string to label ID
@@ -177,7 +178,7 @@ impl<'a> Model<'a> {
 
     /// Convert a attribute ID to attribute string
     pub fn to_attr(&self, aid: u32) -> Option<&str> {
-        self.attrs.to_str(aid)
+        self.attrs.to_str(aid).and_then(|s| s.to_str().ok())
     }
 
     /// Convert a attribute string to attribute ID
