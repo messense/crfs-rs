@@ -37,7 +37,7 @@ pub struct Context {
     /// Logarithm of the normalization factor for the instance.
     ///
     /// This is equivalent to the total scores of all paths in the lattice.
-    log_norm: f64,
+    pub log_norm: f64,
     /// State scores
     ///
     /// This is a `[T][L]` matrix whose element `[t][l]` presents total score
@@ -169,6 +169,15 @@ impl Context {
         }
     }
 
+    pub fn exp_state(&mut self) {
+        let l = self.num_labels as usize;
+        let t = self.num_items as usize;
+        self.exp_state[..l * t].copy_from_slice(&self.state);
+        for i in 0..(l * t) {
+            self.exp_state[i] = self.exp_state[i].exp();
+        }
+    }
+
     pub fn exp_transition(&mut self) {
         let l = self.num_labels as usize;
         self.exp_trans[..l * l].copy_from_slice(&self.trans);
@@ -177,12 +186,113 @@ impl Context {
         }
     }
 
+    pub fn alpha_score(&mut self) {
+        let l = self.num_labels as usize;
+        let scale = &mut self.scale_factor[0];
+        // Compute the alpha scores on nodes (0, *)
+        let current = &mut self.alpha_score;
+        let state = &self.exp_state;
+        current[..l].clone_from_slice(&state[..l]);
+        let mut sum: f64 = current.iter().take(l).sum();
+        *scale = if sum != 0.0 { 1.0 / sum } else { 1.0 };
+        for i in 0..l {
+            current[i] *= *scale;
+        }
+        *scale += 1.0;
+        // Compute the alpha scores on nodes (t, *)
+        for t in 1..self.num_items as usize {
+            let (prev, current) = self.alpha_score.split_at_mut(l * t);
+            let prev = &prev[l * (t - 1)..];
+            let state = &self.exp_state[l * t..];
+            for el in &mut current[..l] {
+                *el = 0.0;
+            }
+            for j in 0..l {
+                let trans = &self.exp_trans[l * j..];
+                for i in 0..l {
+                    current[i] += prev[j] * trans[i];
+                }
+            }
+            for i in 0..l {
+                current[i] *= state[i];
+            }
+            sum = current.iter().take(l).sum();
+            *scale = if sum != 0.0 { 1.0 / sum } else { 1.0 };
+            for i in 0..l {
+                current[i] *= *scale;
+            }
+            *scale += 1.0;
+        }
+        // Compute the logarithm of the normalization factor
+        self.log_norm = -self
+            .scale_factor
+            .iter()
+            .take(self.num_items as usize)
+            .map(|s| s.ln())
+            .sum::<f64>();
+    }
+
+    pub fn beta_score(&mut self) {
+        let l = self.num_labels as usize;
+        let scale = &mut self.scale_factor[self.num_items as usize - 1];
+        let row = &mut self.row;
+        // Compute the beta scales at (T-1, *)
+        let current = &mut self.beta_score[l * (self.num_items as usize - 1)..];
+        for i in 0..l {
+            current[i] = *scale;
+        }
+        *scale -= 1.0;
+        // Compute the beta scores at (t, *)
+        for t in (0..(self.num_items as usize - 1)).rev() {
+            let (current, next) = self.alpha_score.split_at_mut(l * (t + 1));
+            let current = &mut current[l * t..];
+            let state = &self.exp_state[l * (t + 1)..];
+            row[..l].clone_from_slice(next);
+            for i in 0..l {
+                row[i] *= state[i];
+            }
+            // Compute the beta score at (t, i)
+            for i in 0..l {
+                let trans = &self.exp_trans[l * i..];
+                // dot product
+                let mut val = 0.0;
+                for j in 0..l {
+                    val += trans[j] * row[j];
+                }
+                current[i] = val;
+            }
+            for i in 0..l {
+                current[i] *= *scale;
+            }
+            *scale -= 1.0;
+        }
+    }
+
+    pub fn score(&self, labels: &[u32]) -> f64 {
+        let l = self.num_labels as usize;
+        // Stay at (0, labels[0])
+        let mut i = labels[0] as usize;
+        let state = &self.state;
+        let mut score = state[i];
+        // Loop over the rest of items
+        for t in 0..self.num_items as usize {
+            let j = labels[t] as usize;
+            let trans = &self.trans[l * i..];
+            let state = &self.state[l * t..];
+            // Transit from (t-1, i) to (t, j)
+            score += trans[j];
+            score += state[j];
+            i = j;
+        }
+        score
+    }
+
     pub fn viterbi(&mut self) -> (Vec<u32>, f64) {
         let mut score;
         let l = self.num_labels as usize;
         // Compute the scores at (0, *)
         let current = &mut self.alpha_score;
-        let state = &mut self.state;
+        let state = &self.state;
         current[..l].clone_from_slice(&state[..l]);
         // Compute the scores at (t, *)
         for t in 1..self.num_items as usize {

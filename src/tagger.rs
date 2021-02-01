@@ -8,7 +8,6 @@ use crate::model::Model;
 enum Level {
     None,
     Set,
-    #[allow(dead_code)]
     AlphaBeta,
 }
 
@@ -62,10 +61,12 @@ impl<'a> Tagger<'a> {
         Ok(tagger)
     }
 
+    /// Obtain the number of items in the current instance.
     pub fn len(&self) -> usize {
         self.context.num_items as usize
     }
 
+    /// Is the number of items in the current instance equals to 0
     pub fn is_empty(&self) -> bool {
         self.context.num_items == 0
     }
@@ -105,6 +106,30 @@ impl<'a> Tagger<'a> {
         self.state_score(&instance)?;
         self.level = Level::Set;
         Ok(())
+    }
+
+    /// Compute the log of the partition factor (normalization constant).
+    pub fn lognorm(&mut self) -> f64 {
+        self.set_level(Level::AlphaBeta);
+        self.context.log_norm
+    }
+
+    /// Compute the score of a label sequence.
+    pub fn score(&self, labels: &[u32]) -> f64 {
+        self.context.score(labels)
+    }
+
+    fn set_level(&mut self, level: Level) {
+        let prev = self.level;
+        match prev {
+            Level::None | Level::Set => {
+                self.context.exp_state();
+                self.context.alpha_score();
+                self.context.beta_score();
+            }
+            Level::AlphaBeta => {}
+        }
+        self.level = level;
     }
 
     fn transition_score(&mut self) -> io::Result<()> {
