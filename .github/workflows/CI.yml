@@ -33,12 +33,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --all
-      - name: Test benchmarks
-        uses: actions-rs/cargo@v1
-        with:
-          command: bench
-          args: -- --test
+          args: --benches --all
       - name: Run cargo-tarpaulin
         uses: actions-rs/tarpaulin@v0.1
         with:
