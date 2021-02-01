@@ -119,6 +119,12 @@ impl<'a> Tagger<'a> {
         self.context.score(labels)
     }
 
+    /// Compute the marginal probability of a label at a position.
+    pub fn marginal_point(&mut self, l: usize, t: usize) -> f64 {
+        self.set_level(Level::AlphaBeta);
+        self.context.marginal_point(l, t)
+    }
+
     fn set_level(&mut self, level: Level) {
         let prev = self.level;
         match prev {

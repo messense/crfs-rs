@@ -287,6 +287,13 @@ impl Context {
         score
     }
 
+    pub fn marginal_point(&self, l: usize, t: usize) -> f64 {
+        let num = self.num_labels as usize;
+        let fwd = &self.alpha_score[num * t..];
+        let bwd = &self.beta_score[num * t..];
+        fwd[l] * bwd[l] / self.scale_factor[t]
+    }
+
     pub fn viterbi(&mut self) -> (Vec<u32>, f64) {
         let mut score;
         let l = self.num_labels as usize;
