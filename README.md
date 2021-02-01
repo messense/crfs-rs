@@ -19,6 +19,16 @@ Add it to your ``Cargo.toml``:
 crfs = "0.1"
 ```
 
+## Performance
+
+Performance comparsion with CRFsuite on MacBook Pro (13-inch, M1, 2020) 16GB
+
+```bash
+$ cargo bench --bench crf_bench -- --output-format bencher
+test tag/crfs ... bench:        2084 ns/iter (+/- 6)
+test tag/crfsuite ... bench:        2957 ns/iter (+/- 9)
+```
+
 ## License
 
 This work is released under the MIT license. A copy of the license is provided
