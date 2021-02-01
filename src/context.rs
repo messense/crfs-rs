@@ -294,6 +294,19 @@ impl Context {
         fwd[l] * bwd[l] / self.scale_factor[t]
     }
 
+    pub fn marginal_path(&self, path: &[usize], begin: usize, end: usize) -> f64 {
+        let l = self.num_labels as usize;
+        let fwd = &self.alpha_score[l * begin..];
+        let bwd = &self.beta_score[l * (end - 1)..];
+        let mut prob = fwd[path[begin]] * bwd[path[end - 1]] / self.scale_factor[begin];
+        for t in begin..end - 1 {
+            let state = &self.exp_state[l * (t + 1)..];
+            let edge = &self.trans[l * path[t]..];
+            prob *= edge[path[t + 1]] * state[path[t + 1]] * self.scale_factor[t];
+        }
+        prob
+    }
+
     pub fn viterbi(&mut self) -> (Vec<u32>, f64) {
         let mut score;
         let l = self.num_labels as usize;

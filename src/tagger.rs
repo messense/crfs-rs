@@ -125,6 +125,12 @@ impl<'a> Tagger<'a> {
         self.context.marginal_point(l, t)
     }
 
+    /// Compute the marginal probability of a partial label sequence
+    pub fn marginal_path(&mut self, path: &[usize], begin: usize, end: usize) -> f64 {
+        self.set_level(Level::AlphaBeta);
+        self.context.marginal_path(path, begin, end)
+    }
+
     fn set_level(&mut self, level: Level) {
         let prev = self.level;
         match prev {
