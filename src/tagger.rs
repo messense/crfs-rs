@@ -71,23 +71,11 @@ impl<'a> Tagger<'a> {
     }
 
     /// Predict the label sequence for the item sequence.
-    pub fn tag(&mut self, xseq: &[Vec<Attribute>]) -> io::Result<Vec<&str>> {
+    pub fn tag<T: AsRef<[Attribute]>>(&mut self, xseq: &[T]) -> io::Result<Vec<&str>> {
         if xseq.is_empty() {
             return Ok(Vec::new());
         }
-        let mut instance = Instance::with_capacity(xseq.len());
-        for item in xseq {
-            let item: Item = item
-                .iter()
-                .filter_map(|x| {
-                    self.model
-                        .to_attr_id(&x.name)
-                        .map(|id| dataset::Attribute::new(id, x.value))
-                })
-                .collect();
-            instance.push(item, 0);
-        }
-        self.set(&instance)?;
+        self.set(xseq)?;
         let (label_ids, _score) = self.viterbi();
         let mut labels = Vec::with_capacity(label_ids.len());
         for id in label_ids {
@@ -97,10 +85,24 @@ impl<'a> Tagger<'a> {
         Ok(labels)
     }
 
-    fn set(&mut self, instance: &Instance) -> io::Result<()> {
+    /// Set an instance (item sequence) for future calls of `tag`, `probability` and `marginal` methods
+    pub fn set<T: AsRef<[Attribute]>>(&mut self, xseq: &[T]) -> io::Result<()> {
+        let mut instance = Instance::with_capacity(xseq.len());
+        for item in xseq {
+            let item: Item = item
+                .as_ref()
+                .iter()
+                .filter_map(|x| {
+                    self.model
+                        .to_attr_id(&x.name)
+                        .map(|id| dataset::Attribute::new(id, x.value))
+                })
+                .collect();
+            instance.push(item, 0);
+        }
         self.context.set_num_items(instance.num_items);
         self.context.reset(Reset::STATE);
-        self.state_score(instance)?;
+        self.state_score(&instance)?;
         self.level = Level::Set;
         Ok(())
     }

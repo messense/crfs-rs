@@ -420,7 +420,7 @@ STATE_FEATURES = {
         assert_eq!(res, yseq);
 
         let mut tagger = model.tagger().unwrap();
-        let res = tagger.tag(&[]).unwrap();
+        let res = tagger.tag::<[Attribute; 0]>(&[]).unwrap();
         assert!(res.is_empty());
     }
 }
