@@ -192,7 +192,7 @@ impl Context {
         // Compute the alpha scores on nodes (0, *)
         let current = &mut self.alpha_score;
         let state = &self.exp_state;
-        current[..l].clone_from_slice(&state[..l]);
+        current[..l].copy_from_slice(&state[..l]);
         let mut sum: f64 = current.iter().take(l).sum();
         *scale = if sum != 0.0 { 1.0 / sum } else { 1.0 };
         for i in 0..l {
@@ -247,7 +247,7 @@ impl Context {
             let (current, next) = self.alpha_score.split_at_mut(l * (t + 1));
             let current = &mut current[l * t..];
             let state = &self.exp_state[l * (t + 1)..];
-            row[..l].clone_from_slice(next);
+            row[..l].copy_from_slice(next);
             for i in 0..l {
                 row[i] *= state[i];
             }
@@ -313,7 +313,7 @@ impl Context {
         // Compute the scores at (0, *)
         let current = &mut self.alpha_score;
         let state = &self.state;
-        current[..l].clone_from_slice(&state[..l]);
+        current[..l].copy_from_slice(&state[..l]);
         // Compute the scores at (t, *)
         for t in 1..self.num_items as usize {
             let (prev, current) = self.alpha_score.split_at_mut(l * t);
