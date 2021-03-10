@@ -1,0 +1,24 @@
+[package]
+name = "py-crfs"
+version = "0.1.0"
+authors = ["messense <messense@icloud.com>"]
+edition = "2018"
+license = "MIT"
+keywords = ["crf", "crfsuite"]
+readme = "README.md"
+homepage = "https://github.com/messense/crfs-rs"
+repository = "https://github.com/messense/crfs-rs.git"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "crfs"
+crate-type = ["cdylib"]
+
+[dependencies]
+crfs-rs = { package = "crfs", version = "0.1.0" }
+ouroboros = "0.8.2"
+pyo3 = { version = "0.13.2", features = ["abi3-py36", "extension-module"] }
+
+[package.metadata.maturin]
+name = "crfs"

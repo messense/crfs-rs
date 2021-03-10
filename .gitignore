@@ -1,3 +1,4 @@
 /target
+/python/target
 Cargo.lock
 tests/output/*.cqdb
