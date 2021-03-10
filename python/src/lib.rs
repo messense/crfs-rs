@@ -36,6 +36,8 @@ enum PyAttributeInput {
         value: f64,
     },
     Tuple(String, f64),
+    #[pyo3(transparent)]
+    NameOnly(String),
 }
 
 impl From<PyAttributeInput> for Attribute {
@@ -44,6 +46,7 @@ impl From<PyAttributeInput> for Attribute {
             PyAttributeInput::Attr(PyAttribute { name, value }) => Attribute::new(name, value),
             PyAttributeInput::Dict { name, value } => Attribute::new(name, value),
             PyAttributeInput::Tuple(name, value) => Attribute::new(name, value),
+            PyAttributeInput::NameOnly(name) => Attribute::new(name, 1.0),
         }
     }
 }
@@ -88,6 +91,7 @@ impl PyModel {
 
 #[pymodule]
 fn crfs(_py: Python, m: &PyModule) -> PyResult<()> {
+    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_class::<PyAttribute>()?;
     m.add_class::<PyModel>()?;
     Ok(())
