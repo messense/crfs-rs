@@ -18,6 +18,7 @@ struct PyAttribute {
 #[pymethods]
 impl PyAttribute {
     #[new]
+    #[args(name, value = "1.0")]
     fn new(name: String, value: f64) -> Self {
         Self { name, value }
     }
