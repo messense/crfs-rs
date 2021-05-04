@@ -114,8 +114,8 @@ jobs:
     strategy:
       matrix:
         platform: [
-          { manylinux: "2014", target: "aarch64-unknown-linux-gnu", arch: "aarch64" },
-          { manylinux: "2014", target: "armv7-unknown-linux-gnueabihf", arch: "armv7" },
+          { manylinux: "2014", target: "aarch64-unknown-linux-gnu", arch: "aarch64", container: "messense/manylinux2014-cross:aarch64" },
+          { manylinux: "2014", target: "armv7-unknown-linux-gnueabihf", arch: "armv7", container: "messense/manylinux2014-cross:armv7" },
         ]
     steps:
     - uses: actions/checkout@v2
@@ -123,14 +123,12 @@ jobs:
       with:
         python-version: 3.9
     - name: Build Wheels
-      run: |
-        echo 'curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
-        source ~/.cargo/env
-        rustup target add ${{ matrix.platform.target }}
-        maturin build -i python --release --out dist --no-sdist -m python/Cargo.toml --target ${{ matrix.platform.target }} --manylinux ${{ matrix.platform.manylinux }}
-        ' > build-wheel.sh
-
-        docker run --rm -v "$PWD":/io -w /io messense/manylinux2014-cross:${{ matrix.platform.arch }} bash build-wheel.sh
+      uses: messense/maturin-action@v1
+      with:
+        container: ${{ matrix.platform.container }}
+        target: ${{ matrix.platform.target }}
+        manylinux: ${{ matrix.platform.manylinux }}
+        args: --release --out dist --no-sdist -m python/Cargo.toml
     - uses: uraimo/run-on-arch-action@v2.0.5
       name: Install built wheel
       with:
@@ -154,7 +152,6 @@ jobs:
         name: wheels
         path: dist
 
-
   release:
     name: Release
     runs-on: ubuntu-latest
@@ -172,5 +169,5 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
         run: |
-          pip install --upgrade wheel pip setuptools twine
+          pip install --upgrade twine
           twine upload --skip-existing *
