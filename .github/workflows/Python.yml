@@ -17,7 +17,6 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          target: aarch64-apple-darwin
           profile: minimal
           default: true
       - name: Build wheels - x86_64
@@ -30,10 +29,6 @@ jobs:
           pip install crfs --no-index --find-links dist --force-reinstall
           python -c "import crfs"
       - name: Build wheels - universal2
-        env:
-          DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
-          MACOSX_DEPLOYMENT_TARGET: '10.9'
-          PYO3_CROSS_LIB_DIR: /Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.8/lib
         uses: messense/maturin-action@v1
         with:
           args: --release --universal2 --out dist --no-sdist -m python/Cargo.toml
