@@ -34,6 +34,8 @@ jobs:
         with:
           command: test
           args: --benches --all
+      - run: cargo clean
+        if: matrix.os == 'ubuntu-latest'
       - name: Run cargo-tarpaulin
         uses: actions-rs/tarpaulin@v0.1
         with:
