@@ -115,6 +115,8 @@ jobs:
         platform: [
           { manylinux: "2014", target: "aarch64-unknown-linux-gnu", arch: "aarch64" },
           { manylinux: "2014", target: "armv7-unknown-linux-gnueabihf", arch: "armv7" },
+          { manylinux: "2014", target: "s390x-unknown-linux-gnu", arch: "s390x" },
+          { manylinux: "2_24", target: "powerpc64le-unknown-linux-gnu", arch: "ppc64le" },
         ]
     steps:
     - uses: actions/checkout@v2
@@ -122,8 +124,9 @@ jobs:
       with:
         python-version: 3.9
     - name: Build Wheels
-      uses: messense/maturin-action@v1
+      uses: messense/maturin-action@main
       with:
+        maturin-version: 'v0.10.5-beta.4'
         target: ${{ matrix.platform.target }}
         manylinux: ${{ matrix.platform.manylinux }}
         args: --release --out dist --no-sdist -m python/Cargo.toml
