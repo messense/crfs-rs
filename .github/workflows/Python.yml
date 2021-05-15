@@ -116,6 +116,7 @@ jobs:
           { target: "armv7-unknown-linux-gnueabihf", arch: "armv7" },
           { target: "s390x-unknown-linux-gnu", arch: "s390x" },
           { target: "powerpc64le-unknown-linux-gnu", arch: "ppc64le" },
+          { target: "powerpc64-unknown-linux-gnu", arch: "ppc64" },
         ]
     steps:
     - uses: actions/checkout@v2
@@ -125,11 +126,12 @@ jobs:
     - name: Build Wheels
       uses: messense/maturin-action@v1
       with:
-        maturin-version: 'v0.10.5-beta.4'
+        maturin-version: 'v0.10.5-beta.5'
         target: ${{ matrix.platform.target }}
         manylinux: auto
         args: --release --out dist --no-sdist -m python/Cargo.toml
     - uses: uraimo/run-on-arch-action@v2.0.5
+      if: matrix.platform.arch != 'ppc64'
       name: Install built wheel
       with:
         arch: ${{ matrix.platform.arch }}
