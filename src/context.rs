@@ -148,23 +148,14 @@ impl Context {
         let t = self.num_items as usize;
         let l = self.num_labels as usize;
         if flag.contains(Reset::STATE) {
-            // FIXME: use slice::fill when it reaches stable
-            for el in &mut self.state[..t * l] {
-                *el = 0.0;
-            }
+            self.state[..t * l].fill(0.0);
         }
         if flag.contains(Reset::TRANS) {
-            for el in &mut self.trans[..l * l] {
-                *el = 0.0;
-            }
+            self.trans[..l * l].fill(0.0);
         }
         if self.flag.contains(Flag::MARGINALS) {
-            for el in &mut self.mexp_state[..t * l] {
-                *el = 0.0;
-            }
-            for el in &mut self.mexp_trans[..l * l] {
-                *el = 0.0;
-            }
+            self.mexp_state[..t * l].fill(0.0);
+            self.mexp_trans[..l * l].fill(0.0);
             self.log_norm = 0.0;
         }
     }
