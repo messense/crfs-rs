@@ -25,9 +25,11 @@ Performance comparsion with CRFsuite on MacBook Pro (13-inch, M1, 2020) 16GB
 
 ```bash
 $ cargo bench --bench crf_bench -- --output-format bencher
-test tag/crfs ... bench:        2084 ns/iter (+/- 6)
-test tag/crfsuite ... bench:        2957 ns/iter (+/- 9)
+test tag/crfs ... bench:        1449 ns/iter (+/- 5)
+test tag/crfsuite ... bench:        2154 ns/iter (+/- 14)
 ```
+
+Last updated on 2021-11-18.
 
 ## License
 
