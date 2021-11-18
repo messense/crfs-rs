@@ -16,7 +16,7 @@ Add it to your ``Cargo.toml``:
 
 ```toml
 [dependencies]
-crfs = "0.1"
+crfs = "0.2"
 ```
 
 ## Performance
