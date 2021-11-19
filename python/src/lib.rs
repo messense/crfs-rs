@@ -65,11 +65,7 @@ struct PyModel {
 impl PyModel {
     #[new]
     fn new_py(data: Vec<u8>) -> PyResult<Self> {
-        let model = PyModelTryBuilder {
-            data,
-            model_builder: |model_data| Model::new(model_data),
-        }
-        .try_build()?;
+        let model = PyModel::try_new(data, |data| Model::new(data))?;
         Ok(model)
     }
 
