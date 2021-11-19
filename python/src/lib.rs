@@ -57,7 +57,7 @@ impl From<PyAttributeInput> for Attribute {
 struct PyModel {
     data: Vec<u8>,
     #[borrows(data)]
-    #[not_covariant]
+    #[covariant]
     model: Model<'this>,
 }
 
@@ -80,7 +80,7 @@ impl PyModel {
     }
 
     pub fn tag(&self, xseq: Vec<Vec<PyAttributeInput>>) -> PyResult<Vec<String>> {
-        let mut tagger = self.with_model(|model| model.tagger())?;
+        let mut tagger = self.borrow_model().tagger()?;
         let xseq: Vec<Vec<Attribute>> = xseq
             .into_iter()
             .map(|xs| xs.into_iter().map(Into::into).collect())
