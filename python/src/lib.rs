@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::{self, Write};
 
 use crfs_rs::{Attribute, Model};
 use ouroboros::self_referencing;
@@ -63,18 +64,21 @@ struct PyModel {
 
 #[pymethods]
 impl PyModel {
+    /// Create an instance of a model object from a model in memory
     #[new]
     fn new_py(data: Vec<u8>) -> PyResult<Self> {
         let model = PyModel::try_new(data, |data| Model::new(data))?;
         Ok(model)
     }
 
+    /// Create an instance of a model object from a local file
     #[staticmethod]
     fn open(path: &str) -> PyResult<Self> {
         let data = fs::read(path)?;
         Self::new_py(data)
     }
 
+    /// Predict the label sequence for the item sequence.
     pub fn tag(&self, xseq: Vec<Vec<PyAttributeInput>>) -> PyResult<Vec<String>> {
         let mut tagger = self.borrow_model().tagger()?;
         let xseq: Vec<Vec<Attribute>> = xseq
@@ -83,6 +87,16 @@ impl PyModel {
             .collect();
         let labels = tagger.tag(&xseq)?;
         Ok(labels.iter().map(|l| l.to_string()).collect())
+    }
+
+    /// Print the model in human-readable format
+    pub fn dump(&self) -> PyResult<()> {
+        let mut out = Vec::new();
+        self.borrow_model().dump(&mut out)?;
+        let stdout = io::stdout();
+        let mut handle = stdout.lock();
+        handle.write_all(&out)?;
+        Ok(())
     }
 }
 
