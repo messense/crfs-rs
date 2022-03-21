@@ -17,7 +17,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 crfs-rs = { package = "crfs", version = "0.2.0" }
-ouroboros = "0.14.0"
+ouroboros = "0.15.0"
 pyo3 = { version = "0.15.0", features = ["abi3-py36", "extension-module"] }
 
 [package.metadata.maturin]
