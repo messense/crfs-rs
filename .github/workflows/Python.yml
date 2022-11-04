@@ -15,7 +15,7 @@ jobs:
           architecture: x64
       - uses: dtolnay/rust-toolchain@stable
       - name: Build wheels - x86_64
-        uses: messense/maturin-action@v1
+        uses: PyO3/maturin-action@v1
         with:
           target: x86_64
           args: --release --out dist --sdist -m python/Cargo.toml
@@ -24,7 +24,7 @@ jobs:
           pip install crfs --no-index --find-links dist --force-reinstall
           python -c "import crfs"
       - name: Build wheels - universal2
-        uses: messense/maturin-action@v1
+        uses: PyO3/maturin-action@v1
         with:
           args: --release --universal2 --out dist -m python/Cargo.toml
       - name: Install built wheel - universal2
@@ -50,7 +50,7 @@ jobs:
           architecture: ${{ matrix.target }}
       - uses: dtolnay/rust-toolchain@stable
       - name: Build wheels
-        uses: messense/maturin-action@v1
+        uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
           args: --release --out dist -m python/Cargo.toml
@@ -76,7 +76,7 @@ jobs:
         python-version: 3.9
         architecture: x64
     - name: Build wheels
-      uses: messense/maturin-action@v1
+      uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
         manylinux: auto
@@ -103,7 +103,7 @@ jobs:
       with:
         python-version: 3.9
     - name: Build wheels
-      uses: messense/maturin-action@v1
+      uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
         manylinux: auto
@@ -142,7 +142,7 @@ jobs:
         python-version: 3.9
         architecture: x64
     - name: Build wheels
-      uses: messense/maturin-action@v1
+      uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
         manylinux: musllinux_1_2
@@ -179,7 +179,7 @@ jobs:
       with:
         python-version: 3.9
     - name: Build wheels
-      uses: messense/maturin-action@v1
+      uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.platform.target }}
         manylinux: musllinux_1_2
