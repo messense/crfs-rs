@@ -8,7 +8,7 @@ jobs:
   macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v4
         with:
           python-version: 3.9
@@ -44,7 +44,7 @@ jobs:
       matrix:
         target: [x64, x86]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v4
         with:
           python-version: 3.9
@@ -71,7 +71,7 @@ jobs:
       matrix:
         target: [x86_64, i686]
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - uses: actions/setup-python@v4
       with:
         python-version: 3.9
@@ -99,7 +99,7 @@ jobs:
       matrix:
         target: [aarch64, armv7, s390x, ppc64le, ppc64]
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - uses: actions/setup-python@v4
       with:
         python-version: 3.9
@@ -137,7 +137,7 @@ jobs:
           - x86_64-unknown-linux-musl
           - i686-unknown-linux-musl
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - uses: actions/setup-python@v4
       with:
         python-version: 3.9
@@ -175,7 +175,7 @@ jobs:
           - target: armv7-unknown-linux-musleabihf
             arch: armv7
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - uses: actions/setup-python@v4
       with:
         python-version: 3.9
