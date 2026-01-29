@@ -13,6 +13,10 @@ repository = "https://github.com/messense/crfs-rs"
 name = "crf_bench"
 harness = false
 
+[[bench]]
+name = "viterbi_bench"
+harness = false
+
 [dependencies]
 bitflags = "1.2.1"
 bstr = "1.0.0"
