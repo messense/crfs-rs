@@ -20,8 +20,10 @@ pub struct Instance {
     /// Array of the label sequence
     pub labels: Vec<u32>,
     /// Instance weight
+    #[allow(dead_code)]
     pub weight: f64,
     /// Group ID of the instance
+    #[allow(dead_code)]
     pub group: u32,
 }
 

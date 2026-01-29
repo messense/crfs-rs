@@ -8,8 +8,8 @@ use std::{
 use bstr::ByteSlice;
 use cqdb::CQDB;
 
-use crate::feature::{Feature, FeatureRefs};
 use crate::Tagger;
+use crate::feature::{Feature, FeatureRefs};
 
 const CHUNK_SIZE: usize = 12;
 const FEATURE_SIZE: usize = 20;
@@ -55,6 +55,7 @@ struct Header {
     off_attr_refs: u32,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 #[repr(C)]
 struct FeatureRefHeader {
@@ -64,6 +65,7 @@ struct FeatureRefHeader {
     offsets: [u32; 1],
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 #[repr(C)]
 struct FeatureHeader {
@@ -98,14 +100,11 @@ impl<'a> Model<'a> {
     pub fn new(buf: &'a [u8]) -> io::Result<Self> {
         let size = buf.len();
         if size <= mem::size_of::<Header>() {
-            return Err(io::Error::new(io::ErrorKind::Other, "invalid model format"));
+            return Err(io::Error::other("invalid model format"));
         }
         let magic = &buf[0..4];
         if magic != b"lCRF" {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "invalid file format, magic mismatch",
-            ));
+            return Err(io::Error::other("invalid file format, magic mismatch"));
         }
         let mut index = 4;
         let header_size = unpack_u32(&buf[index..])?;
@@ -186,7 +185,7 @@ impl<'a> Model<'a> {
         self.attrs.to_id(value)
     }
 
-    pub(crate) fn label_ref(&self, lid: u32) -> io::Result<FeatureRefs> {
+    pub(crate) fn label_ref(&self, lid: u32) -> io::Result<FeatureRefs<'_>> {
         let mut index = self.header.off_label_refs as usize + CHUNK_SIZE;
         index += 4 * lid as usize;
         let offset = unpack_u32(&self.buffer[index..])? as usize;
@@ -198,7 +197,7 @@ impl<'a> Model<'a> {
         })
     }
 
-    pub(crate) fn attr_ref(&self, lid: u32) -> io::Result<FeatureRefs> {
+    pub(crate) fn attr_ref(&self, lid: u32) -> io::Result<FeatureRefs<'_>> {
         let mut index = self.header.off_attr_refs as usize + CHUNK_SIZE;
         index += 4 * lid as usize;
         let offset = unpack_u32(&self.buffer[index..])? as usize;

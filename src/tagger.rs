@@ -31,6 +31,7 @@ pub struct Tagger<'a> {
     /// Number of distinct output labels
     num_labels: u32,
     /// Number of distinct attributes
+    #[allow(dead_code)]
     num_attrs: u32,
     level: Level,
 }
