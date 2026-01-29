@@ -216,7 +216,7 @@ impl Context {
                 labels[self.num_items as usize - 1] = i as u32;
             }
         }
-        // Tag labels by tracing teh backward links
+        // Tag labels by tracing the backward links
         for t in (0..(self.num_items as usize - 1)).rev() {
             let back = &self.backward_edge[l * (t + 1)..];
             labels[t] = back[labels[t + 1] as usize];
