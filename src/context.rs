@@ -48,6 +48,11 @@ pub struct Context {
     /// This is a `[L][L]` matrix whose element `[i][j]` represents the total
     /// score of transition features associating labels #i and #j.
     pub trans: Vec<f64>,
+    /// Transposed transition scores for cache-friendly Viterbi
+    ///
+    /// This is a `[L][L]` matrix whose element `[j][i]` = trans[i][j].
+    /// Stored for optimized column-wise access during Viterbi.
+    pub(crate) trans_t: Vec<f64>,
     /// Alpha score matrix
     ///
     /// This is a `[T][L]` matrix whose element `[t][l]` presents the total
@@ -108,9 +113,11 @@ impl Context {
         } else {
             (Vec::new(), Vec::new())
         };
+        let trans_t = vec![0.0; l * l];
         let mut ctx = Self {
             flag,
             trans,
+            trans_t,
             exp_trans,
             mexp_trans,
             num_items: 0,
@@ -168,9 +175,75 @@ impl Context {
         }
     }
 
+    /// Specialized Viterbi for small fixed L (fully unrolled)
+    #[inline]
+    fn viterbi_specialized<const L: usize>(&mut self) -> (Vec<u32>, f64) {
+        // Compute the scores at (0, *)
+        let current = &mut self.alpha_score;
+        let state = &mut self.state;
+        current[..L].clone_from_slice(&state[..L]);
+        
+        // Compute the scores at (t, *)
+        for t in 1..self.num_items as usize {
+            let (prev, current) = self.alpha_score.split_at_mut(L * t);
+            let prev = &prev[L * (t - 1)..];
+            let state = &self.state[L * t..];
+            let back = &mut self.backward_edge[L * t..];
+            
+            // Compute the score of (t, j) - fully unrolled for const L
+            for j in 0..L {
+                let mut max_score = f64::MIN;
+                let mut argmax_score = 0;
+                let trans_col = &self.trans_t[L * j..];
+                
+                // This loop will be fully unrolled by the compiler
+                for i in 0..L {
+                    let score = prev[i] + trans_col[i];
+                    if max_score < score {
+                        max_score = score;
+                        argmax_score = i;
+                    }
+                }
+                
+                back[j] = argmax_score as u32;
+                current[j] = max_score + state[j];
+            }
+        }
+        
+        // Find the maximum score at the end
+        let mut max_score = f64::MIN;
+        let prev = &self.alpha_score[L * (self.num_items as usize - 1)..];
+        let mut labels = vec![0u32; self.num_items as usize];
+        
+        for i in 0..L {
+            if max_score < prev[i] {
+                max_score = prev[i];
+                labels[self.num_items as usize - 1] = i as u32;
+            }
+        }
+        
+        // Tag labels by tracing the backward links
+        for t in (0..(self.num_items as usize - 1)).rev() {
+            let back = &self.backward_edge[L * (t + 1)..];
+            labels[t] = back[labels[t + 1] as usize];
+        }
+        
+        (labels, max_score)
+    }
+
     pub fn viterbi(&mut self) -> (Vec<u32>, f64) {
-        let mut score;
         let l = self.num_labels as usize;
+        
+        // Use specialized versions for common small L values
+        // These are fully unrolled by the compiler for maximum performance
+        match l {
+            2 => return self.viterbi_specialized::<2>(),
+            3 => return self.viterbi_specialized::<3>(),
+            4 => return self.viterbi_specialized::<4>(),
+            5 => return self.viterbi_specialized::<5>(),
+            _ => {} // Fall through to generic version
+        }
+        
         // Compute the scores at (0, *)
         let current = &mut self.alpha_score;
         let state = &mut self.state;
@@ -185,10 +258,12 @@ impl Context {
             for j in 0..l {
                 let mut max_score = f64::MIN;
                 let mut argmax_score = None;
-                for (i, prev_value) in prev.iter().enumerate().take(l) {
+                // Use transposed matrix for cache-friendly sequential access
+                let trans_col = &self.trans_t[l * j..];
+                for i in 0..l {
                     // Transit from (t-1, i) to (t, j)
-                    let trans = &self.trans[l * i..];
-                    score = prev_value + trans[j];
+                    // trans_t[j][i] = trans[i][j]
+                    let score = prev[i] + trans_col[i];
                     // Store this path if it has the maximum score
                     if max_score < score {
                         max_score = score;
