@@ -27,7 +27,7 @@ bitflags! {
 #[derive(Debug, Clone, Default)]
 pub struct Context {
     /// Flag specifying the functionality
-    pub flag: Flag,
+    flag: Flag,
     /// The total number of distinct labels
     pub num_labels: u32,
     /// The number of items in the instance
@@ -52,12 +52,12 @@ pub struct Context {
     ///
     /// This is a `[L][L]` matrix whose element `[j][i]` = trans[i][j].
     /// Stored for optimized column-wise access during Viterbi.
-    pub trans_t: Vec<f64>,
+    pub(crate) trans_t: Vec<f64>,
     /// Alpha score matrix
     ///
     /// This is a `[T][L]` matrix whose element `[t][l]` presents the total
     /// score of paths starting at BOS and arriving at (t, l).
-    pub alpha_score: Vec<f64>,
+    alpha_score: Vec<f64>,
     /// Beta score matrix
     ///
     /// This is a `[T][L]` matrix whose element `[t][l]` presents the total
@@ -77,7 +77,7 @@ pub struct Context {
     /// This is a `[T][L]` matrix whose element `[t][j]` represents the label #i
     /// that yields the maximum score to arrive at (t, j).
     /// This member is available only with `CTXF_VITERBI` flag enabled.
-    pub backward_edge: Vec<u32>,
+    backward_edge: Vec<u32>,
     /// Exponents of state scores
     ///
     /// This is a `[T][L]` matrix whose element `[t][l]` presents the exponent
