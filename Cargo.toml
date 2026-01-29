@@ -19,6 +19,10 @@ bstr = "1.0.0"
 cqdb = "0.5"
 ndarray = "0.16"
 
+[features]
+default = []
+blas = ["ndarray/blas"]
+
 [dev-dependencies]
 crfsuite = "0.3.1"
 criterion = "0.4.0"

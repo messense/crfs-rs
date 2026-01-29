@@ -205,13 +205,11 @@ impl Context {
         let t = self.num_items as usize;
         
         // Compute the scores at (0, *)
-        for j in 0..l {
-            self.alpha_score[[0, j]] = self.state[[0, j]];
-        }
+        self.alpha_score.row_mut(0).assign(&self.state.row(0));
         
         // Compute the scores at (t, *)
         for time in 1..t {
-            // Compute the score of (t, j)
+            // Use row_mut to get mutable access, compute into workspace
             for j in 0..l {
                 let mut max_score = f64::MIN;
                 let mut argmax_score = 0;
@@ -219,8 +217,6 @@ impl Context {
                 for i in 0..l {
                     // Transit from (t-1, i) to (t, j)
                     let score = self.alpha_score[[time - 1, i]] + self.trans[[i, j]];
-                    
-                    // Store this path if it has the maximum score
                     if max_score < score {
                         max_score = score;
                         argmax_score = i;
