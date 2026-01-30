@@ -1,6 +1,6 @@
 use std::fs;
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 
 fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("tag");

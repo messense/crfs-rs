@@ -2,7 +2,7 @@ use bitflags::bitflags;
 
 bitflags! {
     /// Functionality flags for contexts
-    #[derive(Default)]
+    #[derive(Default, Debug, Clone, Copy)]
     pub struct Flag: u32 {
         const BASE = 0x01;
         const VITERBI = 0x01;
@@ -182,20 +182,20 @@ impl Context {
         let current = &mut self.alpha_score;
         let state = &mut self.state;
         current[..L].clone_from_slice(&state[..L]);
-        
+
         // Compute the scores at (t, *)
         for t in 1..self.num_items as usize {
             let (prev, current) = self.alpha_score.split_at_mut(L * t);
             let prev = &prev[L * (t - 1)..];
             let state = &self.state[L * t..];
             let back = &mut self.backward_edge[L * t..];
-            
+
             // Compute the score of (t, j) - fully unrolled for const L
             for j in 0..L {
                 let mut max_score = f64::MIN;
                 let mut argmax_score = 0;
                 let trans_col = &self.trans_t[L * j..];
-                
+
                 // This loop will be fully unrolled by the compiler
                 for i in 0..L {
                     let score = prev[i] + trans_col[i];
@@ -204,30 +204,30 @@ impl Context {
                         argmax_score = i;
                     }
                 }
-                
+
                 back[j] = argmax_score as u32;
                 current[j] = max_score + state[j];
             }
         }
-        
+
         // Find the maximum score at the end
         let mut max_score = f64::MIN;
         let prev = &self.alpha_score[L * (self.num_items as usize - 1)..];
         let mut labels = vec![0u32; self.num_items as usize];
-        
+
         for i in 0..L {
             if max_score < prev[i] {
                 max_score = prev[i];
                 labels[self.num_items as usize - 1] = i as u32;
             }
         }
-        
+
         // Tag labels by tracing the backward links
         for t in (0..(self.num_items as usize - 1)).rev() {
             let back = &self.backward_edge[L * (t + 1)..];
             labels[t] = back[labels[t + 1] as usize];
         }
-        
+
         (labels, max_score)
     }
 
@@ -239,24 +239,24 @@ impl Context {
         let current = &mut self.alpha_score;
         let state = &mut self.state;
         current[..L].clone_from_slice(&state[..L]);
-        
+
         // Compute the scores at (t, *)
         for t in 1..self.num_items as usize {
             let (prev, current) = self.alpha_score.split_at_mut(L * t);
             let prev = &prev[L * (t - 1)..];
             let state = &self.state[L * t..];
             let back = &mut self.backward_edge[L * t..];
-            
+
             // Compute the score of (t, j)
             for j in 0..L {
                 let mut max_score = f64::MIN;
                 let mut argmax_score = 0;
                 let trans_col = &self.trans_t[L * j..];
-                
+
                 // Manually unroll in chunks of 4 to help auto-vectorization
                 let chunks = L / 4;
                 let _remainder = L % 4;
-                
+
                 for chunk in 0..chunks {
                     let i = chunk * 4;
                     // Process 4 elements at once (compiler can vectorize this)
@@ -264,7 +264,7 @@ impl Context {
                     let s1 = prev[i + 1] + trans_col[i + 1];
                     let s2 = prev[i + 2] + trans_col[i + 2];
                     let s3 = prev[i + 3] + trans_col[i + 3];
-                    
+
                     if s0 > max_score {
                         max_score = s0;
                         argmax_score = i;
@@ -282,7 +282,7 @@ impl Context {
                         argmax_score = i + 3;
                     }
                 }
-                
+
                 // Handle remainder
                 for i in (chunks * 4)..L {
                     let score = prev[i] + trans_col[i];
@@ -291,36 +291,36 @@ impl Context {
                         argmax_score = i;
                     }
                 }
-                
+
                 back[j] = argmax_score as u32;
                 current[j] = max_score + state[j];
             }
         }
-        
+
         // Find the maximum score at the end
         let mut max_score = f64::MIN;
         let prev = &self.alpha_score[L * (self.num_items as usize - 1)..];
         let mut labels = vec![0u32; self.num_items as usize];
-        
+
         for i in 0..L {
             if max_score < prev[i] {
                 max_score = prev[i];
                 labels[self.num_items as usize - 1] = i as u32;
             }
         }
-        
+
         // Tag labels by tracing the backward links
         for t in (0..(self.num_items as usize - 1)).rev() {
             let back = &self.backward_edge[L * (t + 1)..];
             labels[t] = back[labels[t + 1] as usize];
         }
-        
+
         (labels, max_score)
     }
 
     pub fn viterbi(&mut self) -> (Vec<u32>, f64) {
         let l = self.num_labels as usize;
-        
+
         // Use specialized versions for common small L values
         // These are fully unrolled by the compiler for maximum performance
         match l {
@@ -337,7 +337,7 @@ impl Context {
             16 => return self.viterbi_unrolled::<16>(),
             _ => {} // Fall through to generic version
         }
-        
+
         // Compute the scores at (0, *)
         let current = &mut self.alpha_score;
         let state = &mut self.state;
