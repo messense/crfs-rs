@@ -11,13 +11,55 @@ bitflags! {
     }
 }
 
+/// Working buffers for Viterbi algorithm
+///
+/// This struct holds per-sequence working buffers used during Viterbi decoding.
+/// It is separate from Context to allow reuse across multiple tagging operations
+/// without repeatedly reallocating memory, and to keep Context immutable during
+/// the viterbi pass.
+#[derive(Debug, Clone, Default)]
+pub struct ViterbiState {
+    /// The number of distinct labels
+    pub(crate) num_labels: u32,
+    /// The number of items in the sequence
+    pub(crate) num_items: u32,
+    /// State scores
+    ///
+    /// This is a `[T][L]` matrix whose element `[t][l]` presents the total score
+    /// of state features associating label #l at #t.
+    pub(crate) state: Vec<f64>,
+    /// Alpha score matrix
+    ///
+    /// This is a `[T][L]` matrix whose element `[t][l]` presents the total
+    /// score of paths starting at BOS and arriving at (t, l).
+    alpha_score: Vec<f64>,
+    /// Backward edges
+    ///
+    /// This is a `[T][L]` matrix whose element `[t][j]` represents the label #i
+    /// that yields the maximum score to arrive at (t, j).
+    backward_edge: Vec<u32>,
+}
+
+impl ViterbiState {
+    /// Create a new ViterbiState with the given number of labels and items
+    pub fn new(num_labels: u32, num_items: u32) -> Self {
+        let l = num_labels as usize;
+        let t = num_items as usize;
+        Self {
+            num_labels,
+            num_items,
+            state: vec![0.0; t * l],
+            alpha_score: vec![0.0; t * l],
+            backward_edge: vec![0; t * l],
+        }
+    }
+}
+
 bitflags! {
     /// Reset flags
     pub struct Reset: u32 {
-        /// Reset state scores
-        const STATE = 0x01;
         /// Reset transition scores
-        const TRANS = 0x02;
+        const TRANS = 0x01;
         /// Reset all
         const ALL = 0xFF;
     }
@@ -38,11 +80,6 @@ pub struct Context {
     ///
     /// This is equivalent to the total scores of all paths in the lattice.
     log_norm: f64,
-    /// State scores
-    ///
-    /// This is a `[T][L]` matrix whose element `[t][l]` presents total score
-    /// of state features associating label #l at #t.
-    pub state: Vec<f64>,
     /// Transition scores
     ///
     /// This is a `[L][L]` matrix whose element `[i][j]` represents the total
@@ -53,11 +90,6 @@ pub struct Context {
     /// This is a `[L][L]` matrix whose element `[j][i]` = trans[i][j].
     /// Stored for optimized column-wise access during Viterbi.
     pub(crate) trans_t: Vec<f64>,
-    /// Alpha score matrix
-    ///
-    /// This is a `[T][L]` matrix whose element `[t][l]` presents the total
-    /// score of paths starting at BOS and arriving at (t, l).
-    alpha_score: Vec<f64>,
     /// Beta score matrix
     ///
     /// This is a `[T][L]` matrix whose element `[t][l]` presents the total
@@ -72,12 +104,6 @@ pub struct Context {
     ///
     /// This is a `[T]` vector used internally for a work space.
     row: Vec<f64>,
-    /// Backward edges
-    ///
-    /// This is a `[T][L]` matrix whose element `[t][j]` represents the label #i
-    /// that yields the maximum score to arrive at (t, j).
-    /// This member is available only with `CTXF_VITERBI` flag enabled.
-    backward_edge: Vec<u32>,
     /// Exponents of state scores
     ///
     /// This is a `[T][L]` matrix whose element `[t][l]` presents the exponent
@@ -135,14 +161,9 @@ impl Context {
         if self.cap_items < t {
             let l = self.num_labels as usize;
             let t = t as usize;
-            self.alpha_score = vec![0.0; t * l];
             self.beta_score = vec![0.0; t * l];
             self.scale_factor = vec![0.0; t];
             self.row = vec![0.0; l];
-            if self.flag.contains(Flag::VITERBI) {
-                self.backward_edge = vec![0; t * l];
-            }
-            self.state = vec![0.0; t * l];
             if self.flag.contains(Flag::MARGINALS) {
                 self.exp_state = vec![0.0; t * l + 4];
                 self.mexp_state = vec![0.0; t * l];
@@ -154,9 +175,6 @@ impl Context {
     pub fn reset(&mut self, flag: Reset) {
         let t = self.num_items as usize;
         let l = self.num_labels as usize;
-        if flag.contains(Reset::STATE) {
-            self.state[..t * l].fill(0.0);
-        }
         if flag.contains(Reset::TRANS) {
             self.trans[..l * l].fill(0.0);
         }
@@ -177,18 +195,20 @@ impl Context {
 
     /// Specialized Viterbi for small fixed L (fully unrolled)
     #[inline]
-    fn viterbi_specialized<const L: usize>(&mut self) -> (Vec<u32>, f64) {
+    fn viterbi_specialized<const L: usize>(
+        &self,
+        num_items: usize,
+        vstate: &mut ViterbiState,
+    ) -> (Vec<u32>, f64) {
         // Compute the scores at (0, *)
-        let current = &mut self.alpha_score;
-        let state = &mut self.state;
-        current[..L].clone_from_slice(&state[..L]);
+        vstate.alpha_score[..L].copy_from_slice(&vstate.state[..L]);
 
         // Compute the scores at (t, *)
-        for t in 1..self.num_items as usize {
-            let (prev, current) = self.alpha_score.split_at_mut(L * t);
+        for t in 1..num_items {
+            let state_t = &vstate.state[L * t..];
+            let (prev, current) = vstate.alpha_score.split_at_mut(L * t);
             let prev = &prev[L * (t - 1)..];
-            let state = &self.state[L * t..];
-            let back = &mut self.backward_edge[L * t..];
+            let back = &mut vstate.backward_edge[L * t..];
 
             // Compute the score of (t, j) - fully unrolled for const L
             for j in 0..L {
@@ -206,25 +226,25 @@ impl Context {
                 }
 
                 back[j] = argmax_score as u32;
-                current[j] = max_score + state[j];
+                current[j] = max_score + state_t[j];
             }
         }
 
         // Find the maximum score at the end
         let mut max_score = f64::MIN;
-        let prev = &self.alpha_score[L * (self.num_items as usize - 1)..];
-        let mut labels = vec![0u32; self.num_items as usize];
+        let prev = &vstate.alpha_score[L * (num_items - 1)..];
+        let mut labels = vec![0u32; num_items];
 
         for (i, prev_value) in prev.iter().enumerate().take(L) {
             if max_score < *prev_value {
                 max_score = *prev_value;
-                labels[self.num_items as usize - 1] = i as u32;
+                labels[num_items - 1] = i as u32;
             }
         }
 
         // Tag labels by tracing the backward links
-        for t in (0..(self.num_items as usize - 1)).rev() {
-            let back = &self.backward_edge[L * (t + 1)..];
+        for t in (0..(num_items - 1)).rev() {
+            let back = &vstate.backward_edge[L * (t + 1)..];
             labels[t] = back[labels[t + 1] as usize];
         }
 
@@ -234,18 +254,20 @@ impl Context {
     /// Optimized Viterbi for medium L values (6-16)
     /// Uses manual loop unrolling to help compiler auto-vectorize
     #[inline]
-    fn viterbi_unrolled<const L: usize>(&mut self) -> (Vec<u32>, f64) {
+    fn viterbi_unrolled<const L: usize>(
+        &self,
+        num_items: usize,
+        vstate: &mut ViterbiState,
+    ) -> (Vec<u32>, f64) {
         // Compute the scores at (0, *)
-        let current = &mut self.alpha_score;
-        let state = &mut self.state;
-        current[..L].clone_from_slice(&state[..L]);
+        vstate.alpha_score[..L].copy_from_slice(&vstate.state[..L]);
 
         // Compute the scores at (t, *)
-        for t in 1..self.num_items as usize {
-            let (prev, current) = self.alpha_score.split_at_mut(L * t);
+        for t in 1..num_items {
+            let state_t = &vstate.state[L * t..];
+            let (prev, current) = vstate.alpha_score.split_at_mut(L * t);
             let prev = &prev[L * (t - 1)..];
-            let state = &self.state[L * t..];
-            let back = &mut self.backward_edge[L * t..];
+            let back = &mut vstate.backward_edge[L * t..];
 
             // Compute the score of (t, j)
             for j in 0..L {
@@ -293,61 +315,73 @@ impl Context {
                 }
 
                 back[j] = argmax_score as u32;
-                current[j] = max_score + state[j];
+                current[j] = max_score + state_t[j];
             }
         }
 
         // Find the maximum score at the end
         let mut max_score = f64::MIN;
-        let prev = &self.alpha_score[L * (self.num_items as usize - 1)..];
-        let mut labels = vec![0u32; self.num_items as usize];
+        let prev = &vstate.alpha_score[L * (num_items - 1)..];
+        let mut labels = vec![0u32; num_items];
 
         for (i, prev_value) in prev.iter().enumerate().take(L) {
             if max_score < *prev_value {
                 max_score = *prev_value;
-                labels[self.num_items as usize - 1] = i as u32;
+                labels[num_items - 1] = i as u32;
             }
         }
 
         // Tag labels by tracing the backward links
-        for t in (0..(self.num_items as usize - 1)).rev() {
-            let back = &self.backward_edge[L * (t + 1)..];
+        for t in (0..(num_items - 1)).rev() {
+            let back = &vstate.backward_edge[L * (t + 1)..];
             labels[t] = back[labels[t + 1] as usize];
         }
 
         (labels, max_score)
     }
 
-    pub fn viterbi(&mut self) -> (Vec<u32>, f64) {
+    /// Run Viterbi decoding using state scores from ViterbiState
+    ///
+    /// State scores should be computed into `vstate.state` before calling this.
+    ///
+    /// # Panics
+    /// Panics if `vstate.num_labels` does not match `self.num_labels`.
+    pub fn viterbi(&self, vstate: &mut ViterbiState) -> (Vec<u32>, f64) {
+        assert_eq!(
+            self.num_labels, vstate.num_labels,
+            "ViterbiState num_labels ({}) must match Context num_labels ({})",
+            vstate.num_labels, self.num_labels
+        );
+
         let l = self.num_labels as usize;
+        let num_items = vstate.num_items as usize;
 
         // Use specialized versions for common small L values
         // These are fully unrolled by the compiler for maximum performance
         match l {
-            2 => return self.viterbi_specialized::<2>(),
-            3 => return self.viterbi_specialized::<3>(),
-            4 => return self.viterbi_specialized::<4>(),
-            5 => return self.viterbi_specialized::<5>(),
-            6 => return self.viterbi_unrolled::<6>(),
-            7 => return self.viterbi_unrolled::<7>(),
-            8 => return self.viterbi_unrolled::<8>(),
-            9 => return self.viterbi_unrolled::<9>(),
-            10 => return self.viterbi_unrolled::<10>(),
-            12 => return self.viterbi_unrolled::<12>(),
-            16 => return self.viterbi_unrolled::<16>(),
+            2 => return self.viterbi_specialized::<2>(num_items, vstate),
+            3 => return self.viterbi_specialized::<3>(num_items, vstate),
+            4 => return self.viterbi_specialized::<4>(num_items, vstate),
+            5 => return self.viterbi_specialized::<5>(num_items, vstate),
+            6 => return self.viterbi_unrolled::<6>(num_items, vstate),
+            7 => return self.viterbi_unrolled::<7>(num_items, vstate),
+            8 => return self.viterbi_unrolled::<8>(num_items, vstate),
+            9 => return self.viterbi_unrolled::<9>(num_items, vstate),
+            10 => return self.viterbi_unrolled::<10>(num_items, vstate),
+            12 => return self.viterbi_unrolled::<12>(num_items, vstate),
+            16 => return self.viterbi_unrolled::<16>(num_items, vstate),
             _ => {} // Fall through to generic version
         }
 
         // Compute the scores at (0, *)
-        let current = &mut self.alpha_score;
-        let state = &mut self.state;
-        current[..l].clone_from_slice(&state[..l]);
+        vstate.alpha_score[..l].copy_from_slice(&vstate.state[..l]);
+
         // Compute the scores at (t, *)
-        for t in 1..self.num_items as usize {
-            let (prev, current) = self.alpha_score.split_at_mut(l * t);
+        for t in 1..num_items {
+            let state_t = &vstate.state[l * t..];
+            let (prev, current) = vstate.alpha_score.split_at_mut(l * t);
             let prev = &prev[l * (t - 1)..];
-            let state = &self.state[l * t..];
-            let back = &mut self.backward_edge[l * t..];
+            let back = &mut vstate.backward_edge[l * t..];
             // Compute the score of (t, j)
             for j in 0..l {
                 let mut max_score = f64::MIN;
@@ -369,25 +403,25 @@ impl Context {
                     back[j] = argmax_score as u32;
                 }
                 // Add the state score on (t, j)
-                current[j] = max_score + state[j];
+                current[j] = max_score + state_t[j];
             }
         }
         // Find the node (#T, Ei) that reaches EOS with the maximum score
         let mut max_score = f64::MIN;
-        let prev = &self.alpha_score[l * (self.num_items as usize - 1)..];
+        let prev = &vstate.alpha_score[l * (num_items - 1)..];
         // Set a score for T-1 to be overwritten later. Just in case we don't
         // end up with something beating f64::MIN.
-        let mut labels = vec![0u32; self.num_items as usize];
+        let mut labels = vec![0u32; num_items];
         for (i, prev_value) in prev.iter().enumerate().take(l) {
             if max_score < *prev_value {
                 max_score = *prev_value;
                 // Tag the item #T
-                labels[self.num_items as usize - 1] = i as u32;
+                labels[num_items - 1] = i as u32;
             }
         }
         // Tag labels by tracing the backward links
-        for t in (0..(self.num_items as usize - 1)).rev() {
-            let back = &self.backward_edge[l * (t + 1)..];
+        for t in (0..(num_items - 1)).rev() {
+            let back = &vstate.backward_edge[l * (t + 1)..];
             labels[t] = back[labels[t + 1] as usize];
         }
         (labels, max_score)
@@ -408,8 +442,7 @@ mod tests {
     #[test]
     fn test_context_reset() {
         let mut ctx = Context::new(Flag::VITERBI | Flag::MARGINALS, 2, 0);
-        ctx.reset(Reset::STATE);
         ctx.reset(Reset::TRANS);
-        ctx.reset(Reset::STATE | Reset::TRANS);
+        ctx.reset(Reset::ALL);
     }
 }

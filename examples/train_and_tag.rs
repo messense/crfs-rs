@@ -54,7 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = Model::new(&model_data)?;
 
     println!("Creating tagger...");
-    let mut tagger = model.tagger()?;
+    let tagger = model.tagger()?;
 
     // Test on training data
     println!("\nTesting on training data:");

@@ -21,7 +21,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             vec![Attribute::new("clean", 1.0)],
         ];
         b.iter(|| {
-            let mut tagger = model.tagger().unwrap();
+            let tagger = model.tagger().unwrap();
             let _res = tagger.tag(black_box(&xseq)).unwrap();
         })
     });

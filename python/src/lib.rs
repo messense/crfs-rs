@@ -80,7 +80,7 @@ impl PyModel {
 
     /// Predict the label sequence for the item sequence.
     pub fn tag(&self, xseq: Vec<Vec<PyAttributeInput>>) -> PyResult<Vec<String>> {
-        let mut tagger = self.borrow_model().tagger()?;
+        let tagger = self.borrow_model().tagger()?;
         let xseq: Vec<Vec<Attribute>> = xseq
             .into_iter()
             .map(|xs| xs.into_iter().map(Into::into).collect())

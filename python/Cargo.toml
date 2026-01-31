@@ -16,6 +16,6 @@ name = "crfs"
 crate-type = ["cdylib"]
 
 [dependencies]
-crfs-rs = { package = "crfs", version = "0.2.0" }
+crfs-rs = { package = "crfs", path = ".." }
 ouroboros = "0.18.5"
 pyo3 = { version = "0.27.2", features = ["abi3-py37", "extension-module"] }
