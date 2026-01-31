@@ -36,14 +36,16 @@ fn test_c2_negative_validation() {
 fn test_epsilon_validation() {
     let mut trainer = Trainer::new(Algorithm::LBFGS);
 
-    // epsilon must be > 0.0
-    let result = trainer.set("epsilon", "0.0");
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err().to_string(), "epsilon must be > 0.0");
+    // epsilon must be non-negative
+    assert!(trainer.set("epsilon", "0.0").is_ok());
 
     // epsilon < 0.0 should fail
     let result = trainer.set("epsilon", "-0.001");
     assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        "epsilon must be non-negative"
+    );
 
     // epsilon > 0.0 should be allowed
     assert!(trainer.set("epsilon", "0.001").is_ok());
