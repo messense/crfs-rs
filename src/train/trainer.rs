@@ -28,6 +28,8 @@ pub enum Algorithm {
     AveragedPerceptron,
     /// Passive Aggressive
     PassiveAggressive,
+    /// L2-regularized SGD
+    L2SGD,
 }
 
 /// Training parameters
@@ -57,6 +59,20 @@ pub struct TrainingParams {
     pub pa_error_sensitive: bool,
     /// PA weight averaging (similarly to Averaged Perceptron)
     pub pa_averaging: bool,
+    /// L2SGD: Period for convergence check
+    pub period: usize,
+    /// L2SGD: Delta for convergence threshold
+    pub delta: f64,
+    /// L2SGD: Initial learning rate for calibration
+    pub calibration_eta: f64,
+    /// L2SGD: Rate of increase/decrease for calibration
+    pub calibration_rate: f64,
+    /// L2SGD: Number of samples for calibration
+    pub calibration_samples: usize,
+    /// L2SGD: Number of candidates for calibration
+    pub calibration_candidates: usize,
+    /// L2SGD: Maximum trials for calibration
+    pub calibration_max_trials: usize,
 }
 
 impl Default for TrainingParams {
@@ -74,6 +90,13 @@ impl Default for TrainingParams {
             pa_c: 1.0,
             pa_error_sensitive: true,
             pa_averaging: true,
+            period: 10,
+            delta: 1e-5,
+            calibration_eta: 0.1,
+            calibration_rate: 2.0,
+            calibration_samples: 1000,
+            calibration_candidates: 10,
+            calibration_max_trials: 20,
         }
     }
 }
@@ -306,6 +329,102 @@ impl Trainer {
                 }
                 self.params.pa_averaging = averaging == 1;
             }
+            "period" => {
+                let period = value.parse().map_err(|_| {
+                    io::Error::new(io::ErrorKind::InvalidInput, "invalid period value")
+                })?;
+                if period == 0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "period must be positive",
+                    ));
+                }
+                self.params.period = period;
+            }
+            "delta" => {
+                let delta = value.parse().map_err(|_| {
+                    io::Error::new(io::ErrorKind::InvalidInput, "invalid delta value")
+                })?;
+                if delta <= 0.0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "delta must be positive",
+                    ));
+                }
+                self.params.delta = delta;
+            }
+            "calibration.eta" => {
+                let eta = value.parse().map_err(|_| {
+                    io::Error::new(io::ErrorKind::InvalidInput, "invalid calibration.eta value")
+                })?;
+                if eta <= 0.0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "calibration.eta must be positive",
+                    ));
+                }
+                self.params.calibration_eta = eta;
+            }
+            "calibration.rate" => {
+                let rate = value.parse().map_err(|_| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "invalid calibration.rate value",
+                    )
+                })?;
+                if rate <= 1.0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "calibration.rate must be greater than 1.0",
+                    ));
+                }
+                self.params.calibration_rate = rate;
+            }
+            "calibration.samples" => {
+                let samples = value.parse().map_err(|_| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "invalid calibration.samples value",
+                    )
+                })?;
+                if samples == 0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "calibration.samples must be positive",
+                    ));
+                }
+                self.params.calibration_samples = samples;
+            }
+            "calibration.candidates" => {
+                let candidates = value.parse().map_err(|_| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "invalid calibration.candidates value",
+                    )
+                })?;
+                if candidates == 0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "calibration.candidates must be positive",
+                    ));
+                }
+                self.params.calibration_candidates = candidates;
+            }
+            "calibration.max_trials" => {
+                let max_trials = value.parse().map_err(|_| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "invalid calibration.max_trials value",
+                    )
+                })?;
+                if max_trials == 0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "calibration.max_trials must be positive",
+                    ));
+                }
+                self.params.calibration_max_trials = max_trials;
+            }
             _ => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -342,6 +461,13 @@ impl Trainer {
             } else {
                 "0".to_string()
             }),
+            "period" => Ok(self.params.period.to_string()),
+            "delta" => Ok(self.params.delta.to_string()),
+            "calibration.eta" => Ok(self.params.calibration_eta.to_string()),
+            "calibration.rate" => Ok(self.params.calibration_rate.to_string()),
+            "calibration.samples" => Ok(self.params.calibration_samples.to_string()),
+            "calibration.candidates" => Ok(self.params.calibration_candidates.to_string()),
+            "calibration.max_trials" => Ok(self.params.calibration_max_trials.to_string()),
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!("unknown parameter: {}", name),
@@ -380,6 +506,7 @@ impl Trainer {
             Algorithm::LBFGS => self.train_lbfgs(&mut fgen)?,
             Algorithm::AveragedPerceptron => self.train_averaged_perceptron(&mut fgen)?,
             Algorithm::PassiveAggressive => self.train_passive_aggressive(&mut fgen)?,
+            Algorithm::L2SGD => self.train_l2sgd(&mut fgen)?,
         }
 
         // Save model
@@ -806,6 +933,264 @@ impl Trainer {
         fgen.set_weights(&weights);
 
         Ok(())
+    }
+
+    fn train_l2sgd(&mut self, fgen: &mut FeatureGenerator) -> io::Result<()> {
+        use rand::SeedableRng;
+        use rand::seq::SliceRandom;
+
+        let num_features = fgen.num_features();
+        let num_labels = self.labels.len();
+        let max_items = self
+            .instances
+            .iter()
+            .map(|inst| inst.num_items as usize)
+            .max()
+            .unwrap_or(0);
+
+        let mut weights = vec![0.0; num_features];
+        let num_instances = self.instances.len();
+        let lambda = 2.0 * self.params.c2 / num_instances as f64;
+
+        // Create CRF context
+        let mut ctx = CrfContext::new(num_labels, max_items);
+
+        if self.params.verbose {
+            println!("Training with L2SGD (c2={})...", self.params.c2);
+        }
+
+        let mut rng = match self.params.shuffle_seed {
+            Some(seed) => rand::rngs::StdRng::seed_from_u64(seed),
+            None => rand::rngs::StdRng::from_entropy(),
+        };
+
+        // Calibration phase: find optimal learning rate
+        let t0 = self.calibrate_learning_rate(fgen, &mut ctx, lambda, &mut rng)?;
+
+        if self.params.verbose {
+            let eta = 1.0 / (lambda * t0);
+            println!("Calibrated learning rate: {:.6}", eta);
+        }
+
+        // Training loop
+        let mut indices: Vec<usize> = (0..self.instances.len()).collect();
+        let mut objective_history = vec![0.0; self.params.period];
+        let mut best_objective = f64::INFINITY;
+        let mut best_weights = vec![0.0; num_features];
+        let mut t = 0.0f64;
+
+        for epoch in 1..=self.params.max_iterations {
+            // Shuffle instances for better convergence
+            indices.shuffle(&mut rng);
+
+            let mut sum_loss = 0.0;
+            let mut loss = 0.0;
+            let mut expected = vec![0.0; num_features];
+            let mut observed = vec![0.0; num_features];
+
+            for &idx in &indices {
+                let inst = &self.instances[idx];
+                let seq_len = inst.num_items as usize;
+
+                // Compute learning rate with decay
+                let eta = 1.0 / (lambda * (t0 + t));
+
+                // Apply weight decay (L2 regularization)
+                let decay = 1.0 - eta * lambda;
+                for w in &mut weights {
+                    *w *= decay;
+                }
+
+                // Compute scores and run forward-backward
+                fgen.set_weights(&weights);
+                ctx.compute_scores(inst, fgen);
+                let log_z = ctx.forward(seq_len);
+                ctx.backward(seq_len);
+                ctx.compute_marginals(seq_len, log_z);
+
+                // Compute expected and observed counts
+                expected.fill(0.0);
+                observed.fill(0.0);
+                ctx.expected_counts_into(inst, fgen, &mut expected);
+                ctx.observed_counts_into(inst, fgen, &mut observed);
+
+                // Update weights: w += eta * (observed - expected)
+                let inst_weight = inst.weight;
+                for i in 0..num_features {
+                    weights[i] += eta * (observed[i] - expected[i]) * inst_weight;
+                }
+
+                // Compute loss for this instance
+                loss = -ctx.log_likelihood(inst, log_z) * inst_weight;
+                sum_loss += loss;
+                t += 1.0;
+            }
+
+            if !loss.is_finite() {
+                return Err(io::Error::new(io::ErrorKind::Other, "L2SGD overflow loss"));
+            }
+
+            // Include the L2 norm of feature weights to the objective.
+            let norm2: f64 = weights.iter().map(|w| w * w).sum();
+            sum_loss += 0.5 * lambda * norm2 * num_instances as f64;
+
+            if self.params.verbose {
+                println!(
+                    "Epoch {}: loss = {:.6}, feature_norm = {:.6}",
+                    epoch,
+                    sum_loss,
+                    norm2.sqrt()
+                );
+            }
+
+            if sum_loss < best_objective {
+                best_objective = sum_loss;
+                best_weights.clone_from_slice(&weights);
+            }
+
+            let improvement = if epoch > self.params.period {
+                let prev = objective_history[(epoch - 1) % self.params.period];
+                (prev - sum_loss) / sum_loss
+            } else {
+                self.params.delta
+            };
+
+            objective_history[(epoch - 1) % self.params.period] = sum_loss;
+
+            if self.params.verbose && epoch > self.params.period {
+                println!("Improvement ratio: {:.6}", improvement);
+            }
+
+            if epoch > self.params.period && improvement < self.params.delta {
+                if self.params.verbose {
+                    println!("Converged at epoch {}", epoch);
+                }
+                break;
+            }
+        }
+
+        // Update feature weights
+        fgen.set_weights(&best_weights);
+
+        Ok(())
+    }
+
+    /// Calibrate learning rate for L2SGD
+    fn calibrate_learning_rate(
+        &self,
+        fgen: &mut FeatureGenerator,
+        ctx: &mut CrfContext,
+        lambda: f64,
+        rng: &mut StdRng,
+    ) -> io::Result<f64> {
+        use rand::seq::SliceRandom;
+
+        let num_features = fgen.num_features();
+        let num_instances = self.instances.len();
+
+        // Select calibration samples
+        let num_samples = self.params.calibration_samples.min(num_instances);
+        let mut sample_indices: Vec<usize> = (0..num_instances).collect();
+        sample_indices.shuffle(rng);
+        sample_indices.truncate(num_samples);
+
+        let mut eta = self.params.calibration_eta;
+        let mut best_eta = eta;
+        let mut best_loss = f64::INFINITY;
+        let mut dec = false;
+        let mut num = self.params.calibration_candidates;
+        let mut trials = 1;
+
+        // Compute the initial loss without instance weights.
+        let mut weights = vec![0.0; num_features];
+        let mut initial_loss = 0.0;
+        fgen.set_weights(&weights);
+        for &idx in &sample_indices {
+            let inst = &self.instances[idx];
+            let seq_len = inst.num_items as usize;
+            ctx.compute_scores(inst, fgen);
+            let log_z = ctx.forward(seq_len);
+            ctx.backward(seq_len);
+            initial_loss += -ctx.log_likelihood(inst, log_z);
+        }
+
+        while num > 0 || !dec {
+            let t0 = 1.0 / (lambda * eta);
+            let mut t = 0.0f64;
+            let mut sum_loss = 0.0;
+            let mut loss = 0.0;
+            let mut expected = vec![0.0; num_features];
+            let mut observed = vec![0.0; num_features];
+            weights.fill(0.0);
+
+            // Perform SGD for one epoch using the calibration samples.
+            for &idx in &sample_indices {
+                let inst = &self.instances[idx];
+                let seq_len = inst.num_items as usize;
+
+                let eta_step = 1.0 / (lambda * (t0 + t));
+                let decay = 1.0 - eta_step * lambda;
+                for w in &mut weights {
+                    *w *= decay;
+                }
+
+                fgen.set_weights(&weights);
+                ctx.compute_scores(inst, fgen);
+                let log_z = ctx.forward(seq_len);
+                ctx.backward(seq_len);
+                ctx.compute_marginals(seq_len, log_z);
+
+                expected.fill(0.0);
+                observed.fill(0.0);
+                ctx.expected_counts_into(inst, fgen, &mut expected);
+                ctx.observed_counts_into(inst, fgen, &mut observed);
+
+                let inst_weight = inst.weight;
+                for i in 0..num_features {
+                    weights[i] += eta_step * (observed[i] - expected[i]) * inst_weight;
+                }
+
+                loss = -ctx.log_likelihood(inst, log_z) * inst_weight;
+                sum_loss += loss;
+                t += 1.0;
+            }
+
+            if !loss.is_finite() {
+                sum_loss = loss;
+            } else {
+                let norm2: f64 = weights.iter().map(|w| w * w).sum();
+                sum_loss += 0.5 * lambda * norm2 * num_samples as f64;
+            }
+
+            let ok = sum_loss.is_finite() && sum_loss < initial_loss;
+            if ok {
+                num = num.saturating_sub(1);
+            }
+
+            if sum_loss.is_finite() && sum_loss < best_loss {
+                best_loss = sum_loss;
+                best_eta = eta;
+            }
+
+            if !dec {
+                if ok && num > 0 {
+                    eta *= self.params.calibration_rate;
+                } else {
+                    dec = true;
+                    num = self.params.calibration_candidates;
+                    eta = self.params.calibration_eta / self.params.calibration_rate;
+                }
+            } else {
+                eta /= self.params.calibration_rate;
+            }
+
+            trials += 1;
+            if self.params.calibration_max_trials <= trials {
+                break;
+            }
+        }
+
+        Ok(1.0 / (lambda * best_eta))
     }
 }
 
