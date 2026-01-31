@@ -20,8 +20,7 @@ fn test_train_save_load_predict() {
     ];
 
     // Train model
-    let mut trainer = Trainer::new(false); // quiet mode
-    trainer.select(Algorithm::LBFGS).unwrap();
+    let mut trainer = Trainer::new(Algorithm::LBFGS); // quiet mode
     trainer.append(&xseq, &yseq).unwrap();
     trainer.set("c1", "0.0").unwrap();
     trainer.set("c2", "1.0").unwrap();
@@ -110,8 +109,7 @@ fn test_model_persistence() {
     ];
     let yseq = vec!["X", "Y", "X", "Y"];
 
-    let mut trainer = Trainer::new(false);
-    trainer.select(Algorithm::LBFGS).unwrap();
+    let mut trainer = Trainer::new(Algorithm::LBFGS);
     trainer.append(&xseq, &yseq).unwrap();
     trainer.set("c2", "1.0").unwrap();
     trainer.set("max_iterations", "50").unwrap();
@@ -142,8 +140,7 @@ fn test_model_persistence() {
 
 #[test]
 fn test_empty_sequence() {
-    let mut trainer = Trainer::new(false);
-    trainer.select(Algorithm::LBFGS).unwrap();
+    let mut trainer = Trainer::new(Algorithm::LBFGS);
 
     let xseq = vec![vec![Attribute::new("a", 1.0)], vec![]];
     let yseq = vec!["X", "Y"];

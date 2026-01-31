@@ -58,30 +58,27 @@ pub struct Trainer {
     /// Label dictionary
     labels: Dictionary,
     /// Selected algorithm
-    algorithm: Option<Algorithm>,
+    algorithm: Algorithm,
     /// Training parameters
     params: TrainingParams,
 }
 
 impl Trainer {
     /// Create a new trainer
-    pub fn new(verbose: bool) -> Self {
+    pub fn new(algorithm: Algorithm) -> Self {
         Self {
             instances: Vec::new(),
             attrs: Dictionary::new(),
             labels: Dictionary::new(),
-            algorithm: None,
-            params: TrainingParams {
-                verbose,
-                ..Default::default()
-            },
+            algorithm,
+            params: TrainingParams::default(),
         }
     }
 
-    /// Select training algorithm
-    pub fn select(&mut self, algorithm: Algorithm) -> io::Result<()> {
-        self.algorithm = Some(algorithm);
-        Ok(())
+    /// Enable or disable verbose output
+    pub fn verbose(&mut self, enabled: bool) -> &mut Self {
+        self.params.verbose = enabled;
+        self
     }
 
     /// Append training data
@@ -234,13 +231,6 @@ impl Trainer {
 
     /// Train the model and save to file
     pub fn train(&mut self, filename: &Path) -> io::Result<()> {
-        if self.algorithm.is_none() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "algorithm not selected",
-            ));
-        }
-
         if self.instances.is_empty() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -267,8 +257,7 @@ impl Trainer {
 
         // Train with LBFGS
         match self.algorithm {
-            Some(Algorithm::LBFGS) => self.train_lbfgs(&mut fgen)?,
-            None => unreachable!(),
+            Algorithm::LBFGS => self.train_lbfgs(&mut fgen)?,
         }
 
         // Save model
@@ -397,7 +386,7 @@ impl Trainer {
 
 impl Default for Trainer {
     fn default() -> Self {
-        Self::new(false)
+        Self::new(Algorithm::LBFGS)
     }
 }
 
@@ -422,8 +411,7 @@ mod tests {
 
     #[test]
     fn test_trainer_basic() {
-        let mut trainer = Trainer::new(false);
-        assert!(trainer.select(Algorithm::LBFGS).is_ok());
+        let mut trainer = Trainer::new(Algorithm::LBFGS);
 
         let xseq = vec![
             vec![Attribute::new("walk", 1.0), Attribute::new("shop", 0.5)],
@@ -439,7 +427,7 @@ mod tests {
 
     #[test]
     fn test_trainer_params() {
-        let mut trainer = Trainer::new(false);
+        let mut trainer = Trainer::new(Algorithm::LBFGS);
         assert!(trainer.set("c1", "0.5").is_ok());
         assert!(trainer.set("c2", "2.0").is_ok());
         assert_eq!(trainer.get("c1").unwrap(), "0.5");
@@ -451,8 +439,7 @@ mod tests {
 
     #[test]
     fn test_trainer_rejects_empty_sequences() {
-        let mut trainer = Trainer::new(false);
-        assert!(trainer.select(Algorithm::LBFGS).is_ok());
+        let mut trainer = Trainer::new(Algorithm::LBFGS);
 
         // Empty sequences should be rejected
         let xseq: Vec<Vec<Attribute>> = vec![];

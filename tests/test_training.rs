@@ -20,9 +20,8 @@ fn test_basic_training() {
     ];
 
     // Create and configure trainer
-    let mut trainer = Trainer::new(true);
-    trainer.select(Algorithm::LBFGS).unwrap();
-    trainer.append(&xseq, &yseq).unwrap();
+    let mut trainer = Trainer::new(Algorithm::LBFGS);
+    trainer.verbose(true).append(&xseq, &yseq).unwrap();
 
     // Set parameters
     trainer.set("c1", "0.0").unwrap();
@@ -51,7 +50,7 @@ fn test_basic_training() {
 
 #[test]
 fn test_trainer_params() {
-    let mut trainer = Trainer::new(false);
+    let mut trainer = Trainer::new(Algorithm::LBFGS);
 
     // Test setting and getting parameters
     trainer.set("c1", "0.5").unwrap();
@@ -68,18 +67,13 @@ fn test_trainer_params() {
 
 #[test]
 fn test_trainer_validation() {
-    let mut trainer = Trainer::new(false);
+    let mut trainer = Trainer::new(Algorithm::LBFGS);
 
     // Use NamedTempFile for automatic cleanup on panic
     let temp_file = tempfile::NamedTempFile::new().unwrap();
     let model_path = temp_file.path();
 
-    // Should fail without algorithm selection
-    let result = trainer.train(model_path);
-    assert!(result.is_err());
-
     // Should fail without training data
-    trainer.select(Algorithm::LBFGS).unwrap();
     let result = trainer.train(model_path);
     assert!(result.is_err());
 

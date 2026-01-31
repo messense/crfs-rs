@@ -11,8 +11,8 @@
 //! use crfs::Attribute;
 //! use std::path::Path;
 //!
-//! let mut trainer = Trainer::new(true);
-//! trainer.select(Algorithm::LBFGS)?;
+//! let mut trainer = Trainer::new(Algorithm::LBFGS);
+//! trainer.verbose(true);
 //!
 //! let xseq = vec![
 //!     vec![Attribute::new("walk", 1.0)],

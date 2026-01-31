@@ -27,9 +27,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create and configure trainer
     println!("Creating trainer...");
-    let mut trainer = Trainer::new(true);
-    trainer.select(Algorithm::LBFGS)?;
-    trainer.append(&xseq, &yseq)?;
+    let mut trainer = Trainer::new(Algorithm::LBFGS);
+    trainer.verbose(true).append(&xseq, &yseq)?;
 
     // Set parameters
     println!("Setting parameters:");
