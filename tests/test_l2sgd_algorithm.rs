@@ -1,4 +1,4 @@
-use crfs::{Algorithm, Attribute, Trainer};
+use crfs::{Attribute, Trainer};
 use std::path::Path;
 
 #[test]
@@ -15,11 +15,11 @@ fn test_l2sgd_basic_training() {
     let yseq = ["sunny", "sunny", "sunny", "rainy", "rainy", "rainy"];
 
     // Train with L2SGD
-    let mut trainer = Trainer::new(Algorithm::L2SGD);
+    let mut trainer = Trainer::l2sgd();
     trainer.verbose(true);
-    trainer.set("c2", "1.0").unwrap();
-    trainer.set("max_iterations", "50").unwrap();
-    trainer.set("period", "10").unwrap();
+    trainer.params_mut().set_c2(1.0).unwrap();
+    trainer.params_mut().set_max_iterations(50).unwrap();
+    trainer.params_mut().set_period(10).unwrap();
 
     // Add training data
     trainer.append(&xseq, &yseq).unwrap();
@@ -60,12 +60,12 @@ fn test_l2sgd_calibration() {
     ];
     let yseq = ["X", "Y", "X", "Y"];
 
-    let mut trainer = Trainer::new(Algorithm::L2SGD);
+    let mut trainer = Trainer::l2sgd();
     trainer.verbose(true);
-    trainer.set("c2", "1.0").unwrap();
-    trainer.set("max_iterations", "20").unwrap();
-    trainer.set("calibration.samples", "4").unwrap();
-    trainer.set("calibration.candidates", "5").unwrap();
+    trainer.params_mut().set_c2(1.0).unwrap();
+    trainer.params_mut().set_max_iterations(20).unwrap();
+    trainer.params_mut().set_calibration_samples(4).unwrap();
+    trainer.params_mut().set_calibration_candidates(5).unwrap();
     trainer.append(&xseq, &yseq).unwrap();
 
     let model_path = Path::new("/tmp/test_l2sgd_calibration.crfsuite");
@@ -87,21 +87,21 @@ fn test_l2sgd_vs_lbfgs() {
     let yseq = ["sunny", "sunny", "sunny", "rainy", "rainy", "rainy"];
 
     // Train with L2SGD
-    let mut l2sgd_trainer = Trainer::new(Algorithm::L2SGD);
+    let mut l2sgd_trainer = Trainer::l2sgd();
     l2sgd_trainer.verbose(false);
-    l2sgd_trainer.set("c2", "1.0").unwrap();
-    l2sgd_trainer.set("max_iterations", "100").unwrap();
-    l2sgd_trainer.set("period", "10").unwrap();
+    l2sgd_trainer.params_mut().set_c2(1.0).unwrap();
+    l2sgd_trainer.params_mut().set_max_iterations(100).unwrap();
+    l2sgd_trainer.params_mut().set_period(10).unwrap();
     l2sgd_trainer.append(&xseq, &yseq).unwrap();
     let l2sgd_model_path = Path::new("/tmp/test_l2sgd_compare.crfsuite");
     l2sgd_trainer.train(l2sgd_model_path).unwrap();
 
     // Train with LBFGS
-    let mut lbfgs_trainer = Trainer::new(Algorithm::LBFGS);
+    let mut lbfgs_trainer = Trainer::lbfgs();
     lbfgs_trainer.verbose(false);
-    lbfgs_trainer.set("c1", "0.0").unwrap();
-    lbfgs_trainer.set("c2", "1.0").unwrap();
-    lbfgs_trainer.set("max_iterations", "100").unwrap();
+    lbfgs_trainer.params_mut().set_c1(0.0).unwrap();
+    lbfgs_trainer.params_mut().set_c2(1.0).unwrap();
+    lbfgs_trainer.params_mut().set_max_iterations(100).unwrap();
     lbfgs_trainer.append(&xseq, &yseq).unwrap();
     let lbfgs_model_path = Path::new("/tmp/test_lbfgs_compare_l2sgd.crfsuite");
     lbfgs_trainer.train(lbfgs_model_path).unwrap();
@@ -150,20 +150,20 @@ fn test_l2sgd_vs_lbfgs() {
 
 #[test]
 fn test_l2sgd_parameter_validation() {
-    let mut trainer = Trainer::new(Algorithm::L2SGD);
+    let mut trainer = Trainer::l2sgd();
 
     // Valid parameters
-    assert!(trainer.set("c2", "1.0").is_ok());
-    assert!(trainer.set("period", "10").is_ok());
-    assert!(trainer.set("delta", "1e-5").is_ok());
-    assert!(trainer.set("calibration.eta", "0.1").is_ok());
-    assert!(trainer.set("calibration.rate", "2.0").is_ok());
+    assert!(trainer.params_mut().set_c2(1.0).is_ok());
+    assert!(trainer.params_mut().set_period(10).is_ok());
+    assert!(trainer.params_mut().set_delta(1e-5).is_ok());
+    assert!(trainer.params_mut().set_calibration_eta(0.1).is_ok());
+    assert!(trainer.params_mut().set_calibration_rate(2.0).is_ok());
 
     // Invalid parameters
-    assert!(trainer.set("period", "0").is_err()); // period must be positive
-    assert!(trainer.set("delta", "0").is_err()); // delta must be positive
-    assert!(trainer.set("calibration.eta", "0").is_err()); // eta must be positive
-    assert!(trainer.set("calibration.rate", "1.0").is_err()); // rate must be > 1.0
+    assert!(trainer.params_mut().set_period(0).is_err()); // period must be positive
+    assert!(trainer.params_mut().set_delta(0.0).is_err()); // delta must be positive
+    assert!(trainer.params_mut().set_calibration_eta(0.0).is_err()); // eta must be positive
+    assert!(trainer.params_mut().set_calibration_rate(1.0).is_err()); // rate must be > 1.0
 }
 
 #[test]
@@ -179,12 +179,12 @@ fn test_l2sgd_convergence() {
     ];
     let yseq = ["X", "Y", "X", "Y", "X", "Y"];
 
-    let mut trainer = Trainer::new(Algorithm::L2SGD);
+    let mut trainer = Trainer::l2sgd();
     trainer.verbose(true);
-    trainer.set("c2", "1.0").unwrap();
-    trainer.set("max_iterations", "100").unwrap();
-    trainer.set("period", "5").unwrap();
-    trainer.set("delta", "1e-4").unwrap();
+    trainer.params_mut().set_c2(1.0).unwrap();
+    trainer.params_mut().set_max_iterations(100).unwrap();
+    trainer.params_mut().set_period(5).unwrap();
+    trainer.params_mut().set_delta(1e-4).unwrap();
     trainer.append(&xseq, &yseq).unwrap();
 
     let model_path = Path::new("/tmp/test_l2sgd_converge.crfsuite");

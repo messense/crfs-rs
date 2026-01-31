@@ -1,4 +1,4 @@
-use crfs::{Algorithm, Attribute, Trainer};
+use crfs::{Attribute, Trainer, train::PaType};
 use std::path::Path;
 
 #[test]
@@ -18,10 +18,10 @@ fn test_pa_basic_training() {
     let yseq = ["X", "Y", "X", "Y", "X", "Y", "X", "Y", "X"];
 
     // Train with PA-I (default)
-    let mut trainer = Trainer::new(Algorithm::PassiveAggressive);
+    let mut trainer = Trainer::passive_aggressive();
     trainer.verbose(true);
-    trainer.set("max_iterations", "50").unwrap();
-    trainer.set("epsilon", "0.01").unwrap();
+    trainer.params_mut().set_max_iterations(50).unwrap();
+    trainer.params_mut().set_epsilon(0.01).unwrap();
 
     // Add training data
     trainer.append(&xseq, &yseq).unwrap();
@@ -63,32 +63,32 @@ fn test_pa_types() {
     let yseq = ["X", "Y", "X", "Y"];
 
     // Test PA (type=0)
-    let mut trainer = Trainer::new(Algorithm::PassiveAggressive);
+    let mut trainer = Trainer::passive_aggressive();
     trainer.verbose(false);
-    trainer.set("type", "0").unwrap();
-    trainer.set("max_iterations", "50").unwrap();
+    trainer.params_mut().set_pa_type(PaType::Pa);
+    trainer.params_mut().set_max_iterations(50).unwrap();
     trainer.append(&xseq, &yseq).unwrap();
     let model_path = Path::new("/tmp/test_pa_type0.crfsuite");
     trainer.train(model_path).unwrap();
     assert!(model_path.exists());
 
     // Test PA-I (type=1)
-    let mut trainer = Trainer::new(Algorithm::PassiveAggressive);
+    let mut trainer = Trainer::passive_aggressive();
     trainer.verbose(false);
-    trainer.set("type", "1").unwrap();
-    trainer.set("c", "1.0").unwrap();
-    trainer.set("max_iterations", "50").unwrap();
+    trainer.params_mut().set_pa_type(PaType::PaI);
+    trainer.params_mut().set_pa_c(1.0).unwrap();
+    trainer.params_mut().set_max_iterations(50).unwrap();
     trainer.append(&xseq, &yseq).unwrap();
     let model_path = Path::new("/tmp/test_pa_type1.crfsuite");
     trainer.train(model_path).unwrap();
     assert!(model_path.exists());
 
     // Test PA-II (type=2)
-    let mut trainer = Trainer::new(Algorithm::PassiveAggressive);
+    let mut trainer = Trainer::passive_aggressive();
     trainer.verbose(false);
-    trainer.set("type", "2").unwrap();
-    trainer.set("c", "1.0").unwrap();
-    trainer.set("max_iterations", "50").unwrap();
+    trainer.params_mut().set_pa_type(PaType::PaII);
+    trainer.params_mut().set_pa_c(1.0).unwrap();
+    trainer.params_mut().set_max_iterations(50).unwrap();
     trainer.append(&xseq, &yseq).unwrap();
     let model_path = Path::new("/tmp/test_pa_type2.crfsuite");
     trainer.train(model_path).unwrap();
@@ -106,10 +106,10 @@ fn test_pa_convergence() {
     ];
     let yseq = ["X", "Y", "X", "Y"];
 
-    let mut trainer = Trainer::new(Algorithm::PassiveAggressive);
+    let mut trainer = Trainer::passive_aggressive();
     trainer.verbose(true);
-    trainer.set("max_iterations", "100").unwrap();
-    trainer.set("epsilon", "0.000001").unwrap(); // Very low epsilon for convergence
+    trainer.params_mut().set_max_iterations(100).unwrap();
+    trainer.params_mut().set_epsilon(0.000001).unwrap(); // Very low epsilon for convergence
 
     trainer.append(&xseq, &yseq).unwrap();
 
@@ -139,22 +139,22 @@ fn test_pa_vs_lbfgs() {
     let yseq = ["sunny", "sunny", "sunny", "rainy", "rainy", "rainy"];
 
     // Train with PA-I
-    let mut pa_trainer = Trainer::new(Algorithm::PassiveAggressive);
+    let mut pa_trainer = Trainer::passive_aggressive();
     pa_trainer.verbose(false);
-    pa_trainer.set("type", "1").unwrap();
-    pa_trainer.set("c", "1.0").unwrap();
-    pa_trainer.set("max_iterations", "100").unwrap();
-    pa_trainer.set("epsilon", "0.001").unwrap();
+    pa_trainer.params_mut().set_pa_type(PaType::PaI);
+    pa_trainer.params_mut().set_pa_c(1.0).unwrap();
+    pa_trainer.params_mut().set_max_iterations(100).unwrap();
+    pa_trainer.params_mut().set_epsilon(0.001).unwrap();
     pa_trainer.append(&xseq, &yseq).unwrap();
     let pa_model_path = Path::new("/tmp/test_pa_compare.crfsuite");
     pa_trainer.train(pa_model_path).unwrap();
 
     // Train with LBFGS
-    let mut lbfgs_trainer = Trainer::new(Algorithm::LBFGS);
+    let mut lbfgs_trainer = Trainer::lbfgs();
     lbfgs_trainer.verbose(false);
-    lbfgs_trainer.set("c1", "0.0").unwrap();
-    lbfgs_trainer.set("c2", "1.0").unwrap();
-    lbfgs_trainer.set("max_iterations", "100").unwrap();
+    lbfgs_trainer.params_mut().set_c1(0.0).unwrap();
+    lbfgs_trainer.params_mut().set_c2(1.0).unwrap();
+    lbfgs_trainer.params_mut().set_max_iterations(100).unwrap();
     lbfgs_trainer.append(&xseq, &yseq).unwrap();
     let lbfgs_model_path = Path::new("/tmp/test_lbfgs_compare_pa.crfsuite");
     lbfgs_trainer.train(lbfgs_model_path).unwrap();
@@ -203,23 +203,20 @@ fn test_pa_vs_lbfgs() {
 
 #[test]
 fn test_pa_parameter_validation() {
-    let mut trainer = Trainer::new(Algorithm::PassiveAggressive);
+    let mut trainer = Trainer::passive_aggressive();
 
     // Valid parameters
-    assert!(trainer.set("type", "0").is_ok());
-    assert!(trainer.set("type", "1").is_ok());
-    assert!(trainer.set("type", "2").is_ok());
-    assert!(trainer.set("c", "1.0").is_ok());
-    assert!(trainer.set("c", "0.5").is_ok());
-    assert!(trainer.set("error_sensitive", "0").is_ok());
-    assert!(trainer.set("error_sensitive", "1").is_ok());
-    assert!(trainer.set("averaging", "0").is_ok());
-    assert!(trainer.set("averaging", "1").is_ok());
+    trainer.params_mut().set_pa_type(PaType::Pa);
+    trainer.params_mut().set_pa_type(PaType::PaI);
+    trainer.params_mut().set_pa_type(PaType::PaII);
+    assert!(trainer.params_mut().set_pa_c(1.0).is_ok());
+    assert!(trainer.params_mut().set_pa_c(0.5).is_ok());
+    trainer.params_mut().set_pa_error_sensitive(false);
+    trainer.params_mut().set_pa_error_sensitive(true);
+    trainer.params_mut().set_pa_averaging(false);
+    trainer.params_mut().set_pa_averaging(true);
 
     // Invalid parameters
-    assert!(trainer.set("type", "3").is_err()); // type must be 0, 1, or 2
-    assert!(trainer.set("c", "0").is_err()); // c must be positive
-    assert!(trainer.set("c", "-1.0").is_err()); // c must be positive
-    assert!(trainer.set("error_sensitive", "2").is_err()); // must be 0 or 1
-    assert!(trainer.set("averaging", "2").is_err()); // must be 0 or 1
+    assert!(trainer.params_mut().set_pa_c(0.0).is_err()); // c must be positive
+    assert!(trainer.params_mut().set_pa_c(-1.0).is_err()); // c must be positive
 }

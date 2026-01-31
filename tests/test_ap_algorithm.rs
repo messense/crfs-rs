@@ -1,5 +1,5 @@
 use crfs::Attribute;
-use crfs::train::{Algorithm, Trainer};
+use crfs::train::Trainer;
 use std::path::Path;
 
 /// Test that AP algorithm can train and produce predictions
@@ -20,13 +20,13 @@ fn test_ap_basic_training() {
         "sunny", "sunny", "sunny", "rainy", "rainy", "rainy", "sunny", "sunny", "rainy",
     ];
 
-    let mut trainer = Trainer::new(Algorithm::AveragedPerceptron);
+    let mut trainer = Trainer::averaged_perceptron();
     trainer.verbose(true);
 
     // Set parameters
-    trainer.set("max_iterations", "50").unwrap();
-    trainer.set("epsilon", "0.01").unwrap();
-    trainer.set("seed", "1").unwrap();
+    trainer.params_mut().set_max_iterations(50).unwrap();
+    trainer.params_mut().set_epsilon(0.01).unwrap();
+    trainer.params_mut().set_shuffle_seed(Some(1));
 
     // Add training data
     trainer.append(&xseq, &yseq).unwrap();
@@ -71,10 +71,10 @@ fn test_ap_no_verbose() {
     ];
     let yseq = ["sunny", "rainy"];
 
-    let mut trainer = Trainer::new(Algorithm::AveragedPerceptron);
+    let mut trainer = Trainer::averaged_perceptron();
     trainer.verbose(false);
-    trainer.set("max_iterations", "10").unwrap();
-    trainer.set("seed", "1").unwrap();
+    trainer.params_mut().set_max_iterations(10).unwrap();
+    trainer.params_mut().set_shuffle_seed(Some(1));
     trainer.append(&xseq, &yseq).unwrap();
 
     let model_path = Path::new("/tmp/test_ap_quiet.crfsuite");
@@ -94,11 +94,11 @@ fn test_ap_convergence() {
     ];
     let yseq = ["X", "Y", "X", "Y"];
 
-    let mut trainer = Trainer::new(Algorithm::AveragedPerceptron);
+    let mut trainer = Trainer::averaged_perceptron();
     trainer.verbose(true);
-    trainer.set("max_iterations", "100").unwrap();
-    trainer.set("epsilon", "0.000001").unwrap(); // Very low epsilon for convergence
-    trainer.set("seed", "1").unwrap();
+    trainer.params_mut().set_max_iterations(100).unwrap();
+    trainer.params_mut().set_epsilon(0.000001).unwrap(); // Very low epsilon for convergence
+    trainer.params_mut().set_shuffle_seed(Some(1));
 
     trainer.append(&xseq, &yseq).unwrap();
 
@@ -128,19 +128,19 @@ fn test_ap_vs_lbfgs() {
     let yseq = ["sunny", "sunny", "sunny", "rainy", "rainy", "rainy"];
 
     // Train with AP
-    let mut ap_trainer = Trainer::new(Algorithm::AveragedPerceptron);
+    let mut ap_trainer = Trainer::averaged_perceptron();
     ap_trainer.verbose(true);
-    ap_trainer.set("max_iterations", "100").unwrap();
-    ap_trainer.set("epsilon", "0.001").unwrap();
-    ap_trainer.set("seed", "1").unwrap();
+    ap_trainer.params_mut().set_max_iterations(100).unwrap();
+    ap_trainer.params_mut().set_epsilon(0.001).unwrap();
+    ap_trainer.params_mut().set_shuffle_seed(Some(1));
     ap_trainer.append(&xseq, &yseq).unwrap();
     let ap_model_path = Path::new("/tmp/test_ap_compare.crfsuite");
     ap_trainer.train(ap_model_path).unwrap();
 
     // Train with LBFGS
-    let mut lbfgs_trainer = Trainer::new(Algorithm::LBFGS);
+    let mut lbfgs_trainer = Trainer::lbfgs();
     lbfgs_trainer.verbose(false);
-    lbfgs_trainer.set("max_iterations", "50").unwrap();
+    lbfgs_trainer.params_mut().set_max_iterations(50).unwrap();
     lbfgs_trainer.append(&xseq, &yseq).unwrap();
     let lbfgs_model_path = Path::new("/tmp/test_lbfgs_compare.crfsuite");
     lbfgs_trainer.train(lbfgs_model_path).unwrap();

@@ -1,0 +1,230 @@
+use std::io;
+
+use super::super::crf_context::ForwardBackwardContext;
+use super::super::feature_gen::FeatureGenerator;
+use super::{Lbfgs, Trainer, TrainingAlgorithm};
+
+/// L-BFGS training parameters.
+#[derive(Debug, Clone)]
+pub struct LbfgsParams {
+    c1: f64,
+    c2: f64,
+    num_memories: usize,
+    max_iterations: usize,
+    epsilon: f64,
+}
+
+impl Default for LbfgsParams {
+    fn default() -> Self {
+        Self {
+            c1: 0.0,
+            c2: 1.0,
+            num_memories: 6,
+            max_iterations: 100,
+            epsilon: 1e-5,
+        }
+    }
+}
+
+impl LbfgsParams {
+    pub fn c1(&self) -> f64 {
+        self.c1
+    }
+
+    pub fn set_c1(&mut self, c1: f64) -> io::Result<()> {
+        if c1 < 0.0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "c1 must be non-negative",
+            ));
+        }
+        self.c1 = c1;
+        Ok(())
+    }
+
+    pub fn c2(&self) -> f64 {
+        self.c2
+    }
+
+    pub fn set_c2(&mut self, c2: f64) -> io::Result<()> {
+        if c2 < 0.0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "c2 must be non-negative",
+            ));
+        }
+        self.c2 = c2;
+        Ok(())
+    }
+
+    pub fn num_memories(&self) -> usize {
+        self.num_memories
+    }
+
+    pub fn set_num_memories(&mut self, num_memories: usize) -> io::Result<()> {
+        if num_memories < 1 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "num_memories must be at least 1",
+            ));
+        }
+        self.num_memories = num_memories;
+        Ok(())
+    }
+
+    pub fn max_iterations(&self) -> usize {
+        self.max_iterations
+    }
+
+    pub fn set_max_iterations(&mut self, max_iterations: usize) -> io::Result<()> {
+        if max_iterations < 1 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "max_iterations must be at least 1",
+            ));
+        }
+        self.max_iterations = max_iterations;
+        Ok(())
+    }
+
+    pub fn epsilon(&self) -> f64 {
+        self.epsilon
+    }
+
+    pub fn set_epsilon(&mut self, epsilon: f64) -> io::Result<()> {
+        if epsilon < 0.0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "epsilon must be non-negative",
+            ));
+        }
+        self.epsilon = epsilon;
+        Ok(())
+    }
+}
+
+impl TrainingAlgorithm for Lbfgs {
+    type Params = LbfgsParams;
+
+    fn train(trainer: &mut Trainer<Self>, fgen: &mut FeatureGenerator) -> io::Result<()> {
+        trainer.train_lbfgs(fgen)
+    }
+}
+
+impl Trainer<Lbfgs> {
+    /// Train using L-BFGS algorithm
+    pub(super) fn train_lbfgs(&mut self, fgen: &mut FeatureGenerator) -> io::Result<()> {
+        let num_features = fgen.num_features();
+        let num_labels = self.labels.len();
+        let max_items = self
+            .instances
+            .iter()
+            .map(|inst| inst.num_items as usize)
+            .max()
+            .unwrap_or(0);
+
+        // Initialize weights to zero
+        let mut weights = vec![0.0; num_features];
+
+        // Create CRF context
+        let mut ctx = ForwardBackwardContext::new(num_labels, max_items);
+
+        // Pre-allocate vectors to avoid repeated allocations in the optimization loop
+        let mut gradient = vec![0.0; num_features];
+        let mut expected = vec![0.0; num_features];
+        let mut observed = vec![0.0; num_features];
+
+        let c1 = self.params.c1();
+        let c2 = self.params.c2();
+        let max_iterations = self.params.max_iterations();
+        let epsilon = self.params.epsilon();
+        let verbose = self.verbose;
+
+        // Objective function: negative log-likelihood + L2 regularization
+        let evaluate = |x: &[f64], gx: &mut [f64]| -> Result<f64, anyhow::Error> {
+            // Update feature weights
+            fgen.set_weights(x);
+
+            let mut loss = 0.0;
+            gradient.fill(0.0);
+
+            // Compute loss and gradient for each instance
+            for inst in &self.instances {
+                let seq_len = inst.num_items as usize;
+
+                // Compute scores and run forward-backward algorithm
+                ctx.compute_scores(inst, fgen);
+                let log_z = ctx.forward(seq_len);
+                ctx.backward(seq_len);
+                ctx.compute_marginals(seq_len, log_z);
+
+                // Compute log-likelihood using pre-computed scores and partition function
+                let log_likelihood = ctx.log_likelihood(inst, log_z);
+                loss -= log_likelihood;
+
+                // Gradient = expected - observed
+                // Reuse pre-allocated vectors
+                expected.fill(0.0);
+                observed.fill(0.0);
+                ctx.expected_counts_into(inst, fgen, &mut expected);
+                ctx.observed_counts_into(inst, fgen, &mut observed);
+                for i in 0..num_features {
+                    gradient[i] += expected[i] - observed[i];
+                }
+            }
+
+            // Add L2 regularization
+            // Factor of 2 comes from derivative of c2 * x[i]^2 -> 2 * c2 * x[i]
+            if c2 > 0.0 {
+                let two_c2 = c2 * 2.0;
+                for i in 0..num_features {
+                    gradient[i] += two_c2 * x[i];
+                    loss += c2 * x[i] * x[i];
+                }
+            }
+
+            // Copy gradient
+            gx.copy_from_slice(&gradient);
+
+            Ok(loss)
+        };
+
+        // Progress callback
+        let progress = |prgr: &liblbfgs::Progress| -> bool {
+            if verbose {
+                println!(
+                    "Iteration {}: loss = {:.6}, ||x|| = {:.6}, ||g|| = {:.6}",
+                    prgr.niter, prgr.fx, prgr.xnorm, prgr.gnorm
+                );
+            }
+            false // continue optimization
+        };
+
+        // Run L-BFGS optimization
+        // Note: LbfgsParams::num_memories is accepted and stored for API compatibility,
+        // but is currently ignored when configuring the LBFGS optimizer because the
+        // liblbfgs crate does not expose a way to configure the number of limited
+        // memory vectors used by the L-BFGS algorithm. The library uses its default.
+        let mut lbfgs = liblbfgs::lbfgs()
+            .with_max_iterations(max_iterations)
+            .with_epsilon(epsilon);
+
+        // Add L1 regularization if c1 > 0
+        if c1 > 0.0 {
+            lbfgs = lbfgs.with_orthantwise(c1, 0, num_features);
+        }
+
+        let result = lbfgs
+            .minimize(&mut weights, evaluate, progress)
+            .map_err(|e| io::Error::other(format!("LBFGS error: {}", e)))?;
+
+        if verbose {
+            println!("Final loss: {:.6}", result.fx);
+        }
+
+        // Update feature weights
+        fgen.set_weights(&weights);
+
+        Ok(())
+    }
+}
