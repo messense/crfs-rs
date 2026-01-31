@@ -19,6 +19,8 @@ pub struct Instance {
     pub items: Vec<Item>,
     /// Array of the label sequence
     pub labels: Vec<u32>,
+    /// Instance weight (used by some training algorithms)
+    pub weight: f64,
 }
 
 impl Attribute {
@@ -33,6 +35,7 @@ impl Instance {
             num_items: 0,
             items: Vec::with_capacity(cap),
             labels: Vec::with_capacity(cap),
+            weight: 1.0,
         }
     }
 
@@ -40,5 +43,9 @@ impl Instance {
         self.items.push(item);
         self.labels.push(label);
         self.num_items += 1;
+    }
+
+    pub fn set_weight(&mut self, weight: f64) {
+        self.weight = weight;
     }
 }

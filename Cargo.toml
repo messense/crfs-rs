@@ -19,6 +19,7 @@ bitflags = "2.10.0"
 bstr = "1.0.0"
 cqdb = "0.5"
 liblbfgs = "0.1"
+rand = "0.8"
 
 [dev-dependencies]
 crfsuite = "0.3.1"

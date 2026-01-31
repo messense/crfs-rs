@@ -1,6 +1,9 @@
 use std::io;
 use std::path::Path;
 
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
+
 use super::crf_context::CrfContext;
 use super::dictionary::Dictionary;
 use super::feature_gen::FeatureGenerator;
@@ -8,11 +11,21 @@ use super::model_writer::ModelWriter;
 use crate::attribute::Attribute;
 use crate::dataset::{Attribute as DatasetAttribute, Instance};
 
+fn shuffle_indices(indices: &mut [usize], rng: &mut StdRng) {
+    let len = indices.len();
+    for i in 0..len {
+        let j = rng.gen_range(0..len);
+        indices.swap(i, j);
+    }
+}
+
 /// Training algorithm
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Algorithm {
     /// L-BFGS optimization
     LBFGS,
+    /// Averaged Perceptron
+    AveragedPerceptron,
 }
 
 /// Training parameters
@@ -30,6 +43,8 @@ pub struct TrainingParams {
     pub epsilon: f64,
     /// Minimum feature frequency
     pub feature_minfreq: f64,
+    /// Seed for shuffling training instances (None uses entropy)
+    pub shuffle_seed: Option<u64>,
     /// Enable verbose output
     pub verbose: bool,
 }
@@ -43,6 +58,7 @@ impl Default for TrainingParams {
             max_iterations: 100,
             epsilon: 1e-5,
             feature_minfreq: 0.0,
+            shuffle_seed: None,
             verbose: false,
         }
     }
@@ -87,6 +103,20 @@ impl Trainer {
         I: AsRef<[Attribute]>,
         L: AsRef<str>,
     {
+        self.append_with_weight(xseq, yseq, 1.0)
+    }
+
+    /// Append weighted training data
+    pub fn append_with_weight<I, L>(
+        &mut self,
+        xseq: &[I],
+        yseq: &[L],
+        weight: f64,
+    ) -> io::Result<()>
+    where
+        I: AsRef<[Attribute]>,
+        L: AsRef<str>,
+    {
         if xseq.len() != yseq.len() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -102,6 +132,7 @@ impl Trainer {
         }
 
         let mut instance = Instance::with_capacity(xseq.len());
+        instance.set_weight(weight);
 
         for (item, label) in xseq.iter().zip(yseq.iter()) {
             // Convert attributes to dataset format with IDs
@@ -203,6 +234,16 @@ impl Trainer {
                 }
                 self.params.feature_minfreq = feature_minfreq;
             }
+            "seed" | "shuffle.seed" => {
+                if value.eq_ignore_ascii_case("auto") || value.eq_ignore_ascii_case("none") {
+                    self.params.shuffle_seed = None;
+                } else {
+                    let seed = value.parse().map_err(|_| {
+                        io::Error::new(io::ErrorKind::InvalidInput, "invalid seed value")
+                    })?;
+                    self.params.shuffle_seed = Some(seed);
+                }
+            }
             _ => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -222,6 +263,11 @@ impl Trainer {
             "max_iterations" => Ok(self.params.max_iterations.to_string()),
             "epsilon" => Ok(self.params.epsilon.to_string()),
             "feature.minfreq" => Ok(self.params.feature_minfreq.to_string()),
+            "seed" | "shuffle.seed" => Ok(self
+                .params
+                .shuffle_seed
+                .map(|seed| seed.to_string())
+                .unwrap_or_else(|| "auto".to_string())),
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!("unknown parameter: {}", name),
@@ -255,9 +301,10 @@ impl Trainer {
             println!("Number of attributes: {}", self.attrs.len());
         }
 
-        // Train with LBFGS
+        // Train with selected algorithm
         match self.algorithm {
             Algorithm::LBFGS => self.train_lbfgs(&mut fgen)?,
+            Algorithm::AveragedPerceptron => self.train_averaged_perceptron(&mut fgen)?,
         }
 
         // Save model
@@ -381,6 +428,163 @@ impl Trainer {
         fgen.set_weights(&weights);
 
         Ok(())
+    }
+
+    /// Train using Averaged Perceptron algorithm
+    fn train_averaged_perceptron(&mut self, fgen: &mut FeatureGenerator) -> io::Result<()> {
+        let num_features = fgen.num_features();
+        let num_labels = self.labels.len();
+        let num_instances = self.instances.len() as f64;
+        let max_items = self
+            .instances
+            .iter()
+            .map(|inst| inst.num_items as usize)
+            .max()
+            .unwrap_or(0);
+
+        // Initialize weights and averaged weights to zero
+        let mut weights = vec![0.0; num_features];
+        let mut summed_updates = vec![0.0; num_features];
+        let mut c = 1.0; // Update counter
+
+        // Create CRF context
+        let mut ctx = CrfContext::new(num_labels, max_items);
+        let mut order: Vec<usize> = (0..self.instances.len()).collect();
+        let mut rng = match self.params.shuffle_seed {
+            Some(seed) => StdRng::seed_from_u64(seed),
+            None => StdRng::from_entropy(),
+        };
+
+        if self.params.verbose {
+            println!("Training with Averaged Perceptron...");
+        }
+
+        // Training loop
+        for epoch in 0..self.params.max_iterations {
+            let mut loss = 0.0;
+
+            if order.len() > 1 {
+                shuffle_indices(&mut order, &mut rng);
+            }
+
+            for &idx in &order {
+                let inst = &self.instances[idx];
+                let seq_len = inst.num_items as usize;
+
+                // Predict with current weights
+                fgen.set_weights(&weights);
+                ctx.compute_scores(inst, fgen);
+                let predicted = ctx.viterbi_decode(seq_len);
+
+                // Check if prediction matches true labels
+                let mut num_diff = 0;
+                for t in 0..seq_len {
+                    if predicted[t] != inst.labels[t] {
+                        num_diff += 1;
+                    }
+                }
+
+                if num_diff > 0 {
+                    // Extract features for true and predicted labels
+                    let true_counts = self.extract_features(inst, &inst.labels, fgen);
+                    let pred_counts = self.extract_features(inst, &predicted, fgen);
+                    let inst_weight = inst.weight;
+
+                    // Update weights: w += true_features - predicted_features
+                    for i in 0..num_features {
+                        let delta = (true_counts[i] - pred_counts[i]) * inst_weight;
+                        weights[i] += delta;
+                        summed_updates[i] += c * delta;
+                    }
+
+                    // Loss is the ratio of wrongly predicted labels
+                    loss += num_diff as f64 / seq_len as f64 * inst_weight;
+                }
+
+                c += 1.0;
+            }
+
+            // Check stopping criterion (error rate)
+            let error_rate = if num_instances > 0.0 {
+                loss / num_instances
+            } else {
+                0.0
+            };
+
+            if self.params.verbose {
+                println!(
+                    "Epoch {}: loss = {:.6} (avg per instance)",
+                    epoch + 1,
+                    error_rate
+                );
+            }
+
+            if error_rate < self.params.epsilon {
+                if self.params.verbose {
+                    println!("Converged at epoch {}", epoch + 1);
+                }
+                break;
+            }
+        }
+
+        // Average the weights
+        for i in 0..num_features {
+            weights[i] -= summed_updates[i] / c;
+        }
+
+        // Update feature weights
+        fgen.set_weights(&weights);
+
+        Ok(())
+    }
+
+    /// Extract feature counts for a given label sequence
+    fn extract_features(
+        &self,
+        inst: &Instance,
+        labels: &[u32],
+        fgen: &FeatureGenerator,
+    ) -> Vec<f64> {
+        use super::feature_gen::FeatureType;
+
+        let mut counts = vec![0.0; fgen.num_features()];
+        let seq_len = inst.num_items as usize;
+
+        // State features
+        for t in 0..seq_len {
+            let label = labels[t];
+            for attr in &inst.items[t] {
+                let aid = attr.id as usize;
+                if aid < fgen.attr_refs.len() {
+                    for &fid in &fgen.attr_refs[aid].fids {
+                        let feature = &fgen.features[fid as usize];
+                        if feature.ftype == FeatureType::State && feature.dst == label {
+                            counts[fid as usize] += attr.value;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Transition features
+        for t in 1..seq_len {
+            let prev_label = labels[t - 1];
+            let label = labels[t];
+            let prev_l = prev_label as usize;
+            if prev_l < fgen.label_refs.len() {
+                for &fid in &fgen.label_refs[prev_l].fids {
+                    let feature = &fgen.features[fid as usize];
+                    if feature.ftype == FeatureType::Transition
+                        && feature.src == prev_label
+                        && feature.dst == label
+                    {
+                        counts[fid as usize] += 1.0;
+                    }
+                }
+            }
+        }
+
+        counts
     }
 }
 
