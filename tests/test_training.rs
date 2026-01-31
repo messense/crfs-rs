@@ -30,15 +30,15 @@ fn test_basic_training() {
     trainer.set("max_iterations", "50").unwrap();
 
     // Train
-    let model_path = "/tmp/test_model.crfsuite";
-    let result = trainer.train(model_path);
+    let model_path = std::env::temp_dir().join("test_model.crfsuite");
+    let result = trainer.train(model_path.to_str().unwrap());
 
     // Check that training completed
     match result {
         Ok(_) => {
             println!("Training completed successfully!");
             // Check that model file was created
-            assert!(std::path::Path::new(model_path).exists());
+            assert!(model_path.exists());
         }
         Err(e) => {
             panic!("Training failed: {}", e);
@@ -65,11 +65,12 @@ fn test_trainer_validation() {
     let mut trainer = Trainer::new(false);
 
     // Should fail without algorithm selection
-    let result = trainer.train("/tmp/test.crfsuite");
+    let model_path = std::env::temp_dir().join("test.crfsuite");
+    let result = trainer.train(model_path.to_str().unwrap());
     assert!(result.is_err());
 
     // Should fail without training data
     trainer.select(Algorithm::LBFGS).unwrap();
-    let result = trainer.train("/tmp/test.crfsuite");
+    let result = trainer.train(model_path.to_str().unwrap());
     assert!(result.is_err());
 }
