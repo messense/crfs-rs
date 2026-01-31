@@ -1,38 +1,23 @@
 use super::feature_gen::{FeatureGenerator, FeatureType};
 use crate::dataset::Instance;
 
-/// CRF context for computing forward-backward algorithm
-pub struct CrfContext {
+/// CRF scoring context for computing state/transition scores and Viterbi decoding.
+pub struct ScoreContext {
     /// Number of labels
     num_labels: usize,
     /// State scores [time][label]
     state_scores: Vec<Vec<f64>>,
     /// Transition scores [prev_label][label]
     trans_scores: Vec<Vec<f64>>,
-    /// Forward variables (in log space) [time][label]
-    alpha: Vec<Vec<f64>>,
-    /// Backward variables (in log space) [time][label]
-    beta: Vec<Vec<f64>>,
-    /// Marginal probabilities [time][label]
-    marginals: Vec<Vec<f64>>,
-    /// Transition marginals [time][prev_label][label]
-    trans_marginals: Vec<Vec<Vec<f64>>>,
-    /// Reusable buffer for log-sum-exp computations
-    log_buffer: Vec<f64>,
 }
 
-impl CrfContext {
-    /// Create a new CRF context
+impl ScoreContext {
+    /// Create a new scoring context
     pub fn new(num_labels: usize, max_items: usize) -> Self {
         Self {
             num_labels,
             state_scores: vec![vec![0.0; num_labels]; max_items],
             trans_scores: vec![vec![0.0; num_labels]; num_labels],
-            alpha: vec![vec![f64::NEG_INFINITY; num_labels]; max_items],
-            beta: vec![vec![f64::NEG_INFINITY; num_labels]; max_items],
-            marginals: vec![vec![0.0; num_labels]; max_items],
-            trans_marginals: vec![vec![vec![0.0; num_labels]; num_labels]; max_items],
-            log_buffer: vec![0.0; num_labels],
         }
     }
 
@@ -83,73 +68,187 @@ impl CrfContext {
         }
     }
 
-    /// Log-sum-exp trick for numerical stability.
+    /// Viterbi decoding to find the best label sequence.
     ///
-    /// Computes log(sum(exp(values))) in a numerically stable way.
-    /// Returns NEG_INFINITY for empty arrays or arrays where all values are NEG_INFINITY.
-    fn logsumexp(values: &[f64]) -> f64 {
-        if values.is_empty() {
-            return f64::NEG_INFINITY;
+    /// This method assumes that [`compute_scores`](Self::compute_scores) has already been
+    /// called. It uses dynamic programming to find the label sequence with maximum score.
+    ///
+    /// # Arguments
+    ///
+    /// * `seq_len` - The length of the sequence
+    ///
+    /// # Returns
+    ///
+    /// A vector of label IDs representing the best label sequence
+    pub fn viterbi_decode(&self, seq_len: usize) -> Vec<u32> {
+        let mut delta = vec![vec![f64::NEG_INFINITY; self.num_labels]; seq_len];
+        let mut psi = vec![vec![0usize; self.num_labels]; seq_len];
+
+        // Initialization: delta[0][l] = state_score[0][l]
+        delta[0][..self.num_labels].copy_from_slice(&self.state_scores[0][..self.num_labels]);
+
+        // Forward pass: find best previous state for each current state
+        for t in 1..seq_len {
+            for l in 0..self.num_labels {
+                let (best_prev, best_score) = (0..self.num_labels)
+                    .map(|prev_l| {
+                        let score = delta[t - 1][prev_l]
+                            + self.trans_scores[prev_l][l]
+                            + self.state_scores[t][l];
+                        (prev_l, score)
+                    })
+                    .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+                    .unwrap_or((0, f64::NEG_INFINITY));
+
+                delta[t][l] = best_score;
+                psi[t][l] = best_prev;
+            }
         }
-        let max_val = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-        if max_val.is_infinite() {
-            return max_val;
+
+        // Backtrack: find the best path
+        let mut labels = vec![0u32; seq_len];
+
+        // Find the best final state
+        let best_final_label = delta[seq_len - 1][..self.num_labels]
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .map(|(l, _)| l)
+            .unwrap_or(0);
+        labels[seq_len - 1] = best_final_label as u32;
+
+        // Backtrack through the sequence
+        for t in (0..seq_len - 1).rev() {
+            labels[t] = psi[t + 1][labels[t + 1] as usize] as u32;
         }
-        let sum: f64 = values.iter().map(|&v| (v - max_val).exp()).sum();
-        max_val + sum.ln()
+
+        labels
+    }
+
+    /// Compute the score for a given label sequence using pre-computed scores.
+    ///
+    /// This method assumes that [`compute_scores`](Self::compute_scores) has already been
+    /// called. It sums state and transition scores along the provided path.
+    pub fn sequence_score(&self, labels: &[u32]) -> f64 {
+        if labels.is_empty() {
+            return 0.0;
+        }
+
+        let mut score = 0.0;
+        for t in 0..labels.len() {
+            let label = labels[t] as usize;
+            score += self.state_scores[t][label];
+            if t > 0 {
+                let prev_label = labels[t - 1] as usize;
+                score += self.trans_scores[prev_label][label];
+            }
+        }
+        score
+    }
+}
+
+fn logsumexp(values: &[f64]) -> f64 {
+    if values.is_empty() {
+        return f64::NEG_INFINITY;
+    }
+    let max_val = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    if max_val.is_infinite() {
+        return max_val;
+    }
+    let sum: f64 = values.iter().map(|&v| (v - max_val).exp()).sum();
+    max_val + sum.ln()
+}
+
+/// CRF context for forward-backward inference.
+pub struct ForwardBackwardContext {
+    scores: ScoreContext,
+    /// Forward variables (in log space) [time][label]
+    alpha: Vec<Vec<f64>>,
+    /// Backward variables (in log space) [time][label]
+    beta: Vec<Vec<f64>>,
+    /// Marginal probabilities [time][label]
+    marginals: Vec<Vec<f64>>,
+    /// Transition marginals [time][prev_label][label]
+    trans_marginals: Vec<Vec<Vec<f64>>>,
+    /// Reusable buffer for log-sum-exp computations
+    log_buffer: Vec<f64>,
+}
+
+impl ForwardBackwardContext {
+    /// Create a new CRF context
+    pub fn new(num_labels: usize, max_items: usize) -> Self {
+        Self {
+            scores: ScoreContext::new(num_labels, max_items),
+            alpha: vec![vec![f64::NEG_INFINITY; num_labels]; max_items],
+            beta: vec![vec![f64::NEG_INFINITY; num_labels]; max_items],
+            marginals: vec![vec![0.0; num_labels]; max_items],
+            trans_marginals: vec![vec![vec![0.0; num_labels]; num_labels]; max_items],
+            log_buffer: vec![0.0; num_labels],
+        }
+    }
+
+    /// Compute state and transition scores for an instance
+    pub fn compute_scores(&mut self, inst: &Instance, fgen: &FeatureGenerator) {
+        self.scores.compute_scores(inst, fgen);
     }
 
     /// Forward algorithm in log space
     pub fn forward(&mut self, seq_len: usize) -> f64 {
+        let num_labels = self.scores.num_labels;
+
         // Initialize at t=0
-        for l in 0..self.num_labels {
-            self.alpha[0][l] = self.state_scores[0][l];
+        for l in 0..num_labels {
+            self.alpha[0][l] = self.scores.state_scores[0][l];
         }
 
         // Forward recursion - reuse log_buffer to avoid allocations
         for t in 1..seq_len {
-            for l in 0..self.num_labels {
-                for prev_l in 0..self.num_labels {
+            for l in 0..num_labels {
+                for prev_l in 0..num_labels {
                     self.log_buffer[prev_l] = self.alpha[t - 1][prev_l]
-                        + self.trans_scores[prev_l][l]
-                        + self.state_scores[t][l];
+                        + self.scores.trans_scores[prev_l][l]
+                        + self.scores.state_scores[t][l];
                 }
-                self.alpha[t][l] = Self::logsumexp(&self.log_buffer[..self.num_labels]);
+                self.alpha[t][l] = logsumexp(&self.log_buffer[..num_labels]);
             }
         }
 
         // Compute log partition function
-        for l in 0..self.num_labels {
+        for l in 0..num_labels {
             self.log_buffer[l] = self.alpha[seq_len - 1][l];
         }
-        Self::logsumexp(&self.log_buffer[..self.num_labels])
+        logsumexp(&self.log_buffer[..num_labels])
     }
 
     /// Backward algorithm in log space
     pub fn backward(&mut self, seq_len: usize) {
+        let num_labels = self.scores.num_labels;
+
         // Initialize at t=T-1
-        for l in 0..self.num_labels {
+        for l in 0..num_labels {
             self.beta[seq_len - 1][l] = 0.0; // log(1) = 0
         }
 
         // Backward recursion - reuse log_buffer to avoid allocations
         for t in (0..seq_len - 1).rev() {
-            for l in 0..self.num_labels {
-                for next_l in 0..self.num_labels {
+            for l in 0..num_labels {
+                for next_l in 0..num_labels {
                     self.log_buffer[next_l] = self.beta[t + 1][next_l]
-                        + self.trans_scores[l][next_l]
-                        + self.state_scores[t + 1][next_l];
+                        + self.scores.trans_scores[l][next_l]
+                        + self.scores.state_scores[t + 1][next_l];
                 }
-                self.beta[t][l] = Self::logsumexp(&self.log_buffer[..self.num_labels]);
+                self.beta[t][l] = logsumexp(&self.log_buffer[..num_labels]);
             }
         }
     }
 
     /// Compute marginal probabilities
     pub fn compute_marginals(&mut self, seq_len: usize, log_z: f64) {
+        let num_labels = self.scores.num_labels;
+
         // State marginals
         for t in 0..seq_len {
-            for l in 0..self.num_labels {
+            for l in 0..num_labels {
                 let log_marginal = self.alpha[t][l] + self.beta[t][l] - log_z;
                 self.marginals[t][l] = log_marginal.exp();
             }
@@ -157,11 +256,11 @@ impl CrfContext {
 
         // Transition marginals
         for t in 1..seq_len {
-            for prev_l in 0..self.num_labels {
-                for l in 0..self.num_labels {
+            for prev_l in 0..num_labels {
+                for l in 0..num_labels {
                     let log_marginal = self.alpha[t - 1][prev_l]
-                        + self.trans_scores[prev_l][l]
-                        + self.state_scores[t][l]
+                        + self.scores.trans_scores[prev_l][l]
+                        + self.scores.state_scores[t][l]
                         + self.beta[t][l]
                         - log_z;
                     self.trans_marginals[t][prev_l][l] = log_marginal.exp();
@@ -197,7 +296,7 @@ impl CrfContext {
 
         // Transition feature expectations
         for t in 1..seq_len {
-            for prev_l in 0..self.num_labels {
+            for prev_l in 0..self.scores.num_labels {
                 if prev_l < fgen.label_refs.len() {
                     for &fid in &fgen.label_refs[prev_l].fids {
                         let feature = &fgen.features[fid as usize];
@@ -256,92 +355,6 @@ impl CrfContext {
         }
     }
 
-    /// Viterbi decoding to find the best label sequence.
-    ///
-    /// This method assumes that [`compute_scores`](Self::compute_scores) has already been
-    /// called. It uses dynamic programming to find the label sequence with maximum score.
-    ///
-    /// # Arguments
-    ///
-    /// * `seq_len` - The length of the sequence
-    ///
-    /// # Returns
-    ///
-    /// A vector of label IDs representing the best label sequence
-    pub fn viterbi_decode(&self, seq_len: usize) -> Vec<u32> {
-        let mut delta = vec![vec![f64::NEG_INFINITY; self.num_labels]; seq_len];
-        let mut psi = vec![vec![0usize; self.num_labels]; seq_len];
-
-        // Initialization: delta[0][l] = state_score[0][l]
-        for l in 0..self.num_labels {
-            delta[0][l] = self.state_scores[0][l];
-        }
-
-        // Forward pass: find best previous state for each current state
-        for t in 1..seq_len {
-            for l in 0..self.num_labels {
-                let mut best_score = f64::NEG_INFINITY;
-                let mut best_prev = 0;
-
-                for prev_l in 0..self.num_labels {
-                    let score = delta[t - 1][prev_l]
-                        + self.trans_scores[prev_l][l]
-                        + self.state_scores[t][l];
-
-                    if score > best_score {
-                        best_score = score;
-                        best_prev = prev_l;
-                    }
-                }
-
-                delta[t][l] = best_score;
-                psi[t][l] = best_prev;
-            }
-        }
-
-        // Backtrack: find the best path
-        let mut labels = vec![0u32; seq_len];
-
-        // Find the best final state
-        let mut best_final_score = f64::NEG_INFINITY;
-        let mut best_final_label = 0;
-        for l in 0..self.num_labels {
-            if delta[seq_len - 1][l] > best_final_score {
-                best_final_score = delta[seq_len - 1][l];
-                best_final_label = l;
-            }
-        }
-        labels[seq_len - 1] = best_final_label as u32;
-
-        // Backtrack through the sequence
-        for t in (0..seq_len - 1).rev() {
-            labels[t] = psi[t + 1][labels[t + 1] as usize] as u32;
-        }
-
-        labels
-    }
-
-    /// Compute the score for a given label sequence using pre-computed scores.
-    ///
-    /// This method assumes that [`compute_scores`](Self::compute_scores) has already been
-    /// called. It sums state and transition scores along the provided path.
-    pub fn sequence_score(&self, labels: &[u32]) -> f64 {
-        if labels.is_empty() {
-            return 0.0;
-        }
-
-        let mut score = 0.0;
-        for t in 0..labels.len() {
-            let label = labels[t] as usize;
-            score += self.state_scores[t][label];
-            if t > 0 {
-                let prev_label = labels[t - 1] as usize;
-                score += self.trans_scores[prev_label][label];
-            }
-        }
-        score
-    }
-
     /// Compute log-likelihood for an instance using pre-computed scores.
     ///
     /// This method assumes that [`compute_scores`](Self::compute_scores) has already been
@@ -360,10 +373,10 @@ impl CrfContext {
         let mut score = 0.0;
         for t in 0..seq_len {
             let label = inst.labels[t] as usize;
-            score += self.state_scores[t][label];
+            score += self.scores.state_scores[t][label];
             if t > 0 {
                 let prev_label = inst.labels[t - 1] as usize;
-                score += self.trans_scores[prev_label][label];
+                score += self.scores.trans_scores[prev_label][label];
             }
         }
 

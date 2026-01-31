@@ -1,4 +1,4 @@
-use crfs::{Algorithm, Attribute, Trainer};
+use crfs::{Attribute, Trainer};
 use std::path::Path;
 
 #[test]
@@ -18,12 +18,12 @@ fn test_arow_basic_training() {
     let yseq = ["X", "Y", "X", "Y", "X", "Y", "X", "Y", "X"];
 
     // Train with AROW
-    let mut trainer = Trainer::new(Algorithm::AROW);
+    let mut trainer = Trainer::arow();
     trainer.verbose(true);
-    trainer.set("variance", "1.0").unwrap();
-    trainer.set("gamma", "1.0").unwrap();
-    trainer.set("max_iterations", "50").unwrap();
-    trainer.set("epsilon", "0.01").unwrap();
+    trainer.params_mut().set_variance(1.0).unwrap();
+    trainer.params_mut().set_gamma(1.0).unwrap();
+    trainer.params_mut().set_max_iterations(50).unwrap();
+    trainer.params_mut().set_epsilon(0.01).unwrap();
 
     // Add training data
     trainer.append(&xseq, &yseq).unwrap();
@@ -64,12 +64,12 @@ fn test_arow_convergence() {
     ];
     let yseq = ["X", "Y", "X", "Y"];
 
-    let mut trainer = Trainer::new(Algorithm::AROW);
+    let mut trainer = Trainer::arow();
     trainer.verbose(true);
-    trainer.set("variance", "1.0").unwrap();
-    trainer.set("gamma", "1.0").unwrap();
-    trainer.set("max_iterations", "100").unwrap();
-    trainer.set("epsilon", "0.000001").unwrap(); // Very low epsilon for convergence
+    trainer.params_mut().set_variance(1.0).unwrap();
+    trainer.params_mut().set_gamma(1.0).unwrap();
+    trainer.params_mut().set_max_iterations(100).unwrap();
+    trainer.params_mut().set_epsilon(0.000001).unwrap(); // Very low epsilon for convergence
 
     trainer.append(&xseq, &yseq).unwrap();
 
@@ -99,22 +99,22 @@ fn test_arow_vs_lbfgs() {
     let yseq = ["sunny", "sunny", "sunny", "rainy", "rainy", "rainy"];
 
     // Train with AROW
-    let mut arow_trainer = Trainer::new(Algorithm::AROW);
+    let mut arow_trainer = Trainer::arow();
     arow_trainer.verbose(false);
-    arow_trainer.set("variance", "1.0").unwrap();
-    arow_trainer.set("gamma", "1.0").unwrap();
-    arow_trainer.set("max_iterations", "100").unwrap();
-    arow_trainer.set("epsilon", "0.001").unwrap();
+    arow_trainer.params_mut().set_variance(1.0).unwrap();
+    arow_trainer.params_mut().set_gamma(1.0).unwrap();
+    arow_trainer.params_mut().set_max_iterations(100).unwrap();
+    arow_trainer.params_mut().set_epsilon(0.001).unwrap();
     arow_trainer.append(&xseq, &yseq).unwrap();
     let arow_model_path = Path::new("/tmp/test_arow_compare.crfsuite");
     arow_trainer.train(arow_model_path).unwrap();
 
     // Train with LBFGS
-    let mut lbfgs_trainer = Trainer::new(Algorithm::LBFGS);
+    let mut lbfgs_trainer = Trainer::lbfgs();
     lbfgs_trainer.verbose(false);
-    lbfgs_trainer.set("c1", "0.0").unwrap();
-    lbfgs_trainer.set("c2", "1.0").unwrap();
-    lbfgs_trainer.set("max_iterations", "100").unwrap();
+    lbfgs_trainer.params_mut().set_c1(0.0).unwrap();
+    lbfgs_trainer.params_mut().set_c2(1.0).unwrap();
+    lbfgs_trainer.params_mut().set_max_iterations(100).unwrap();
     lbfgs_trainer.append(&xseq, &yseq).unwrap();
     let lbfgs_model_path = Path::new("/tmp/test_lbfgs_compare_arow.crfsuite");
     lbfgs_trainer.train(lbfgs_model_path).unwrap();
@@ -163,19 +163,19 @@ fn test_arow_vs_lbfgs() {
 
 #[test]
 fn test_arow_parameter_validation() {
-    let mut trainer = Trainer::new(Algorithm::AROW);
+    let mut trainer = Trainer::arow();
 
     // Valid parameters
-    assert!(trainer.set("variance", "1.0").is_ok());
-    assert!(trainer.set("variance", "0.5").is_ok());
-    assert!(trainer.set("gamma", "1.0").is_ok());
-    assert!(trainer.set("gamma", "0.1").is_ok());
+    assert!(trainer.params_mut().set_variance(1.0).is_ok());
+    assert!(trainer.params_mut().set_variance(0.5).is_ok());
+    assert!(trainer.params_mut().set_gamma(1.0).is_ok());
+    assert!(trainer.params_mut().set_gamma(0.1).is_ok());
 
     // Invalid parameters
-    assert!(trainer.set("variance", "0").is_err()); // variance must be positive
-    assert!(trainer.set("variance", "-1.0").is_err()); // variance must be positive
-    assert!(trainer.set("gamma", "0").is_err()); // gamma must be positive
-    assert!(trainer.set("gamma", "-1.0").is_err()); // gamma must be positive
+    assert!(trainer.params_mut().set_variance(0.0).is_err()); // variance must be positive
+    assert!(trainer.params_mut().set_variance(-1.0).is_err()); // variance must be positive
+    assert!(trainer.params_mut().set_gamma(0.0).is_err()); // gamma must be positive
+    assert!(trainer.params_mut().set_gamma(-1.0).is_err()); // gamma must be positive
 }
 
 #[test]
@@ -191,11 +191,11 @@ fn test_arow_adaptive_regularization() {
     ];
     let yseq = ["A", "B", "A", "A", "A", "B"]; // "noisy" feature is inconsistent
 
-    let mut trainer = Trainer::new(Algorithm::AROW);
+    let mut trainer = Trainer::arow();
     trainer.verbose(true);
-    trainer.set("variance", "1.0").unwrap();
-    trainer.set("gamma", "0.5").unwrap(); // Lower gamma for more adaptation
-    trainer.set("max_iterations", "50").unwrap();
+    trainer.params_mut().set_variance(1.0).unwrap();
+    trainer.params_mut().set_gamma(0.5).unwrap(); // Lower gamma for more adaptation
+    trainer.params_mut().set_max_iterations(50).unwrap();
     trainer.append(&xseq, &yseq).unwrap();
 
     let model_path = Path::new("/tmp/test_arow_adaptive.crfsuite");

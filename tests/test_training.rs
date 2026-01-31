@@ -1,5 +1,5 @@
 use crfs::Attribute;
-use crfs::train::{Algorithm, Trainer};
+use crfs::train::Trainer;
 
 #[test]
 fn test_basic_training() {
@@ -20,13 +20,13 @@ fn test_basic_training() {
     ];
 
     // Create and configure trainer
-    let mut trainer = Trainer::new(Algorithm::LBFGS);
+    let mut trainer = Trainer::lbfgs();
     trainer.verbose(true).append(&xseq, &yseq).unwrap();
 
     // Set parameters
-    trainer.set("c1", "0.0").unwrap();
-    trainer.set("c2", "1.0").unwrap();
-    trainer.set("max_iterations", "50").unwrap();
+    trainer.params_mut().set_c1(0.0).unwrap();
+    trainer.params_mut().set_c2(1.0).unwrap();
+    trainer.params_mut().set_max_iterations(50).unwrap();
 
     // Use NamedTempFile for automatic cleanup on panic
     let temp_file = tempfile::NamedTempFile::new().unwrap();
@@ -50,24 +50,21 @@ fn test_basic_training() {
 
 #[test]
 fn test_trainer_params() {
-    let mut trainer = Trainer::new(Algorithm::LBFGS);
+    let mut trainer = Trainer::lbfgs();
 
     // Test setting and getting parameters
-    trainer.set("c1", "0.5").unwrap();
-    trainer.set("c2", "2.0").unwrap();
-    trainer.set("max_iterations", "100").unwrap();
+    trainer.params_mut().set_c1(0.5).unwrap();
+    trainer.params_mut().set_c2(2.0).unwrap();
+    trainer.params_mut().set_max_iterations(100).unwrap();
 
-    assert_eq!(trainer.get("c1").unwrap(), "0.5");
-    // Note: Rust's f64::to_string() formats 2.0 as "2" without decimal
-    // We parse back to f64 for robust comparison
-    let c2_value: f64 = trainer.get("c2").unwrap().parse().unwrap();
-    assert!((c2_value - 2.0).abs() < f64::EPSILON);
-    assert_eq!(trainer.get("max_iterations").unwrap(), "100");
+    assert_eq!(trainer.params().c1(), 0.5);
+    assert!((trainer.params().c2() - 2.0).abs() < f64::EPSILON);
+    assert_eq!(trainer.params().max_iterations(), 100);
 }
 
 #[test]
 fn test_trainer_validation() {
-    let mut trainer = Trainer::new(Algorithm::LBFGS);
+    let mut trainer = Trainer::lbfgs();
 
     // Use NamedTempFile for automatic cleanup on panic
     let temp_file = tempfile::NamedTempFile::new().unwrap();

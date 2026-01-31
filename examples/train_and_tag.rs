@@ -1,4 +1,4 @@
-use crfs::train::{Algorithm, Trainer};
+use crfs::train::Trainer;
 use crfs::{Attribute, Model};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -27,17 +27,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create and configure trainer
     println!("Creating trainer...");
-    let mut trainer = Trainer::new(Algorithm::LBFGS);
+    let mut trainer = Trainer::lbfgs();
     trainer.verbose(true).append(&xseq, &yseq)?;
 
     // Set parameters
     println!("Setting parameters:");
-    trainer.set("c1", "0.0")?;
-    trainer.set("c2", "1.0")?;
-    trainer.set("max_iterations", "100")?;
-    println!("  L1 regularization (c1): {}", trainer.get("c1")?);
-    println!("  L2 regularization (c2): {}", trainer.get("c2")?);
-    println!("  Max iterations: {}\n", trainer.get("max_iterations")?);
+    trainer.params_mut().set_c1(0.0)?;
+    trainer.params_mut().set_c2(1.0)?;
+    trainer.params_mut().set_max_iterations(100)?;
+    println!("  L1 regularization (c1): {}", trainer.params().c1());
+    println!("  L2 regularization (c2): {}", trainer.params().c2());
+    println!("  Max iterations: {}\n", trainer.params().max_iterations());
 
     // Train
     let temp_file = tempfile::NamedTempFile::new()?;

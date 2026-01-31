@@ -1,4 +1,4 @@
-use crfs::train::{Algorithm, Trainer};
+use crfs::train::Trainer;
 use crfs::{Attribute, Model};
 
 #[test]
@@ -20,11 +20,11 @@ fn test_train_save_load_predict() {
     ];
 
     // Train model
-    let mut trainer = Trainer::new(Algorithm::LBFGS); // quiet mode
+    let mut trainer = Trainer::lbfgs(); // quiet mode
     trainer.append(&xseq, &yseq).unwrap();
-    trainer.set("c1", "0.0").unwrap();
-    trainer.set("c2", "1.0").unwrap();
-    trainer.set("max_iterations", "100").unwrap();
+    trainer.params_mut().set_c1(0.0).unwrap();
+    trainer.params_mut().set_c2(1.0).unwrap();
+    trainer.params_mut().set_max_iterations(100).unwrap();
 
     // Use NamedTempFile for automatic cleanup on panic
     let temp_file = tempfile::NamedTempFile::new().unwrap();
@@ -108,9 +108,9 @@ fn test_tagger_tag_is_immutable() {
     ];
     let yseq = vec!["sunny", "rainy"];
 
-    let mut trainer = Trainer::new(Algorithm::LBFGS);
+    let mut trainer = Trainer::lbfgs();
     trainer.append(&xseq, &yseq).unwrap();
-    trainer.set("c2", "1.0").unwrap();
+    trainer.params_mut().set_c2(1.0).unwrap();
 
     let temp_file = tempfile::NamedTempFile::new().unwrap();
     trainer.train(temp_file.path()).unwrap();
@@ -140,10 +140,10 @@ fn test_model_persistence() {
     ];
     let yseq = vec!["X", "Y", "X", "Y"];
 
-    let mut trainer = Trainer::new(Algorithm::LBFGS);
+    let mut trainer = Trainer::lbfgs();
     trainer.append(&xseq, &yseq).unwrap();
-    trainer.set("c2", "1.0").unwrap();
-    trainer.set("max_iterations", "50").unwrap();
+    trainer.params_mut().set_c2(1.0).unwrap();
+    trainer.params_mut().set_max_iterations(50).unwrap();
 
     // Use NamedTempFile for automatic cleanup on panic
     let temp_file = tempfile::NamedTempFile::new().unwrap();
@@ -171,13 +171,13 @@ fn test_model_persistence() {
 
 #[test]
 fn test_empty_sequence() {
-    let mut trainer = Trainer::new(Algorithm::LBFGS);
+    let mut trainer = Trainer::lbfgs();
 
     let xseq = vec![vec![Attribute::new("a", 1.0)], vec![]];
     let yseq = vec!["X", "Y"];
 
     trainer.append(&xseq, &yseq).unwrap();
-    trainer.set("c2", "1.0").unwrap();
+    trainer.params_mut().set_c2(1.0).unwrap();
 
     // Use NamedTempFile for automatic cleanup on panic
     let temp_file = tempfile::NamedTempFile::new().unwrap();

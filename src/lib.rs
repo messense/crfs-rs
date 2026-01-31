@@ -7,11 +7,11 @@
 //! ## Training
 //!
 //! ```no_run
-//! use crfs::train::{Algorithm, Trainer};
+//! use crfs::train::Trainer;
 //! use crfs::Attribute;
 //! use std::path::Path;
 //!
-//! let mut trainer = Trainer::new(Algorithm::LBFGS);
+//! let mut trainer = Trainer::lbfgs();
 //! trainer.verbose(true);
 //!
 //! let xseq = vec![
@@ -21,7 +21,7 @@
 //! let yseq = vec!["sunny", "rainy"];
 //! trainer.append(&xseq, &yseq)?;
 //!
-//! trainer.set("c2", "1.0")?;
+//! trainer.params_mut().set_c2(1.0)?;
 //! trainer.train(Path::new("model.crfsuite"))?;
 //! # Ok::<(), std::io::Error>(())
 //! ```
@@ -59,4 +59,4 @@ pub use self::model::Model;
 pub use self::tagger::Tagger;
 
 // Re-export training types for convenience
-pub use self::train::{Algorithm, Trainer};
+pub use self::train::{Trainer, TrainingAlgorithm};
