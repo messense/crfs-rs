@@ -41,9 +41,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Max iterations: {}\n", trainer.get("max_iterations")?);
 
     // Train
-    let model_path = std::env::temp_dir().join("example_model.crfsuite");
+    let temp_file = tempfile::NamedTempFile::new()?;
     println!("Training model...\n");
-    trainer.train(&model_path)?;
+    trainer.train(temp_file.path())?;
 
     println!("\n=================================");
     println!("Training completed successfully!");
@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Load model and tag
     println!("Loading trained model...");
-    let model_data = std::fs::read(&model_path)?;
+    let model_data = std::fs::read(temp_file.path())?;
     let model = Model::new(&model_data)?;
 
     println!("Creating tagger...");
