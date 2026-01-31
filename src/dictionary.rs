@@ -64,6 +64,11 @@ impl Dictionary {
             .enumerate()
             .map(|(id, s)| (s.as_str(), id as u32))
     }
+
+    /// Get all strings in order
+    pub fn strings(&self) -> &[String] {
+        &self.id_to_str
+    }
 }
 
 impl Default for Dictionary {
