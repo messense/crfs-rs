@@ -1,4 +1,5 @@
-use crfs::train::{Algorithm, Attribute, Trainer};
+use crfs::Attribute;
+use crfs::train::{Algorithm, Trainer};
 
 #[test]
 fn test_basic_training() {
@@ -48,12 +49,12 @@ fn test_basic_training() {
 #[test]
 fn test_trainer_params() {
     let mut trainer = Trainer::new(false);
-    
+
     // Test setting and getting parameters
     trainer.set("c1", "0.5").unwrap();
     trainer.set("c2", "2.0").unwrap();
     trainer.set("max_iterations", "100").unwrap();
-    
+
     assert_eq!(trainer.get("c1").unwrap(), "0.5");
     assert_eq!(trainer.get("c2").unwrap(), "2");
     assert_eq!(trainer.get("max_iterations").unwrap(), "100");
@@ -62,11 +63,11 @@ fn test_trainer_params() {
 #[test]
 fn test_trainer_validation() {
     let mut trainer = Trainer::new(false);
-    
+
     // Should fail without algorithm selection
     let result = trainer.train("/tmp/test.crfsuite");
     assert!(result.is_err());
-    
+
     // Should fail without training data
     trainer.select(Algorithm::LBFGS).unwrap();
     let result = trainer.train("/tmp/test.crfsuite");

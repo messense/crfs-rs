@@ -1,5 +1,5 @@
-use crate::dataset::Instance;
 use super::feature_gen::{FeatureGenerator, FeatureType};
+use crate::dataset::Instance;
 
 /// CRF context for computing forward-backward algorithm
 pub struct CrfContext {

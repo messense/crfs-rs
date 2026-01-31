@@ -7,7 +7,8 @@
 //! ## Training
 //!
 //! ```no_run
-//! use crfs::train::{Algorithm, Attribute, Trainer};
+//! use crfs::train::{Algorithm, Trainer};
+//! use crfs::Attribute;
 //!
 //! let mut trainer = Trainer::new(true);
 //! trainer.select(Algorithm::LBFGS)?;
@@ -27,20 +28,21 @@
 //! ## Prediction
 //!
 //! ```no_run
-//! use crfs::{Model, TaggerAttribute};
+//! use crfs::{Attribute, Model};
 //!
 //! let model_data = std::fs::read("model.crfsuite")?;
 //! let model = Model::new(&model_data)?;
 //! let mut tagger = model.tagger()?;
 //!
 //! let xseq = vec![
-//!     vec![TaggerAttribute::new("walk", 1.0)],
-//!     vec![TaggerAttribute::new("shop", 1.0)],
+//!     vec![Attribute::new("walk", 1.0)],
+//!     vec![Attribute::new("shop", 1.0)],
 //! ];
 //! let result = tagger.tag(&xseq)?;
 //! # Ok::<(), std::io::Error>(())
 //! ```
 
+mod attribute;
 mod context;
 mod dataset;
 mod feature;
@@ -50,9 +52,10 @@ mod tagger;
 /// Training module containing all components for training CRF models
 pub mod train;
 
-// Re-export main types for prediction
+// Re-export main types
+pub use self::attribute::Attribute;
 pub use self::model::Model;
-pub use self::tagger::{Attribute as TaggerAttribute, Tagger};
+pub use self::tagger::Tagger;
 
 // Re-export training types for convenience
-pub use self::train::{Algorithm, Attribute, Trainer};
+pub use self::train::{Algorithm, Trainer};

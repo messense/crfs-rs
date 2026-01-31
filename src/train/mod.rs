@@ -10,4 +10,4 @@ mod model_writer;
 mod trainer;
 
 // Re-export public types
-pub use self::trainer::{Algorithm, Attribute, Trainer};
+pub use self::trainer::{Algorithm, Trainer};

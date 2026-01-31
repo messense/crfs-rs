@@ -396,7 +396,7 @@ STATE_FEATURES = {
 
     #[test]
     fn test_model_tag() {
-        use crate::tagger::Attribute;
+        use crate::Attribute;
 
         let buf = fs::read("tests/model.crfsuite").unwrap();
         let model = Model::new(&buf).unwrap();

@@ -1,5 +1,5 @@
-use crfs::train::{Algorithm, Attribute, Trainer};
-use crfs::{Model, TaggerAttribute};
+use crfs::train::{Algorithm, Trainer};
+use crfs::{Attribute, Model};
 
 #[test]
 fn test_train_save_load_predict() {
@@ -57,9 +57,9 @@ fn test_train_save_load_predict() {
 
     // Test prediction on new data
     let test_seq = vec![
-        vec![TaggerAttribute::new("walk", 1.0)],
-        vec![TaggerAttribute::new("shop", 1.0)],
-        vec![TaggerAttribute::new("clean", 1.0)],
+        vec![Attribute::new("walk", 1.0)],
+        vec![Attribute::new("shop", 1.0)],
+        vec![Attribute::new("clean", 1.0)],
     ];
 
     let result = tagger.tag(&test_seq).unwrap();
@@ -71,11 +71,11 @@ fn test_train_save_load_predict() {
     }
 
     // Test prediction on training data (should be accurate)
-    let train_test_seq: Vec<Vec<TaggerAttribute>> = xseq
+    let train_test_seq: Vec<Vec<Attribute>> = xseq
         .iter()
         .map(|item| {
             item.iter()
-                .map(|attr| TaggerAttribute::new(&attr.name, attr.value))
+                .map(|attr| Attribute::new(&attr.name, attr.value))
                 .collect()
         })
         .collect();
@@ -124,8 +124,8 @@ fn test_model_persistence() {
     let mut tagger = model.tagger().unwrap();
 
     let test_seq = vec![
-        vec![TaggerAttribute::new("a", 1.0)],
-        vec![TaggerAttribute::new("b", 1.0)],
+        vec![Attribute::new("a", 1.0)],
+        vec![Attribute::new("b", 1.0)],
     ];
 
     let result = tagger.tag(&test_seq).unwrap();
@@ -151,7 +151,7 @@ fn test_empty_sequence() {
 
     let model_path = "/tmp/test_empty.crfsuite";
     let result = trainer.train(model_path);
-    
+
     // Should handle empty items gracefully
     assert!(result.is_ok());
 

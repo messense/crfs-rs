@@ -1,5 +1,5 @@
-use crfs::train::{Algorithm, Attribute, Trainer};
-use crfs::{Model, TaggerAttribute};
+use crfs::train::{Algorithm, Trainer};
+use crfs::{Attribute, Model};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("CRF Training and Tagging Example");
@@ -60,9 +60,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test on training data
     println!("\nTesting on training data:");
     let test_seq = vec![
-        vec![TaggerAttribute::new("walk", 1.0)],
-        vec![TaggerAttribute::new("shop", 1.0)],
-        vec![TaggerAttribute::new("clean", 1.0)],
+        vec![Attribute::new("walk", 1.0)],
+        vec![Attribute::new("shop", 1.0)],
+        vec![Attribute::new("clean", 1.0)],
     ];
 
     let result = tagger.tag(&test_seq)?;

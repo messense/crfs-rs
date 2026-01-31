@@ -178,10 +178,7 @@ mod tests {
         assert_eq!(fgen.num_attrs, 2);
 
         // Check that we have both state and transition features
-        let has_state = fgen
-            .features
-            .iter()
-            .any(|f| f.ftype == FeatureType::State);
+        let has_state = fgen.features.iter().any(|f| f.ftype == FeatureType::State);
         let has_trans = fgen
             .features
             .iter()

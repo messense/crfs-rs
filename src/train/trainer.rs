@@ -4,53 +4,8 @@ use super::crf_context::CrfContext;
 use super::dictionary::Dictionary;
 use super::feature_gen::FeatureGenerator;
 use super::model_writer::ModelWriter;
+use crate::attribute::Attribute;
 use crate::dataset::{Attribute as DatasetAttribute, Instance};
-
-/// An attribute with a name and value for training
-#[derive(Debug, Clone, PartialEq)]
-pub struct Attribute {
-    /// Attribute name
-    pub name: String,
-    /// Attribute value
-    pub value: f64,
-}
-
-impl Attribute {
-    /// Create a new attribute
-    pub fn new<S: Into<String>>(name: S, value: f64) -> Self {
-        Self {
-            name: name.into(),
-            value,
-        }
-    }
-}
-
-impl From<String> for Attribute {
-    fn from(name: String) -> Self {
-        Self { name, value: 1.0 }
-    }
-}
-
-impl From<&str> for Attribute {
-    fn from(name: &str) -> Self {
-        Self {
-            name: name.to_string(),
-            value: 1.0,
-        }
-    }
-}
-
-impl<S: Into<String>> From<(S, f64)> for Attribute {
-    fn from((name, value): (S, f64)) -> Self {
-        Self {
-            name: name.into(),
-            value,
-        }
-    }
-}
-
-/// Type of an item (sequence of attributes)
-pub type Item = Vec<Attribute>;
 
 /// Training algorithm
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -171,14 +126,14 @@ impl Trainer {
     pub fn set(&mut self, name: &str, value: &str) -> io::Result<()> {
         match name {
             "c1" => {
-                self.params.c1 = value.parse().map_err(|_| {
-                    io::Error::new(io::ErrorKind::InvalidInput, "invalid c1 value")
-                })?;
+                self.params.c1 = value
+                    .parse()
+                    .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid c1 value"))?;
             }
             "c2" => {
-                self.params.c2 = value.parse().map_err(|_| {
-                    io::Error::new(io::ErrorKind::InvalidInput, "invalid c2 value")
-                })?;
+                self.params.c2 = value
+                    .parse()
+                    .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid c2 value"))?;
             }
             "num_memories" => {
                 self.params.num_memories = value.parse().map_err(|_| {
@@ -197,10 +152,7 @@ impl Trainer {
             }
             "feature.minfreq" => {
                 self.params.feature_minfreq = value.parse().map_err(|_| {
-                    io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "invalid feature.minfreq value",
-                    )
+                    io::Error::new(io::ErrorKind::InvalidInput, "invalid feature.minfreq value")
                 })?;
             }
             _ => {

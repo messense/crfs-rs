@@ -1,5 +1,6 @@
 use std::io;
 
+use crate::attribute::Attribute;
 use crate::context::{Context, Flag, Reset};
 use crate::dataset::{self, Instance, Item};
 use crate::model::Model;
@@ -10,15 +11,6 @@ enum Level {
     Set,
     #[allow(dead_code)]
     AlphaBeta,
-}
-
-/// Tuple of attribute and its value
-#[derive(Debug, Clone)]
-pub struct Attribute {
-    /// Attribute name
-    pub name: String,
-    /// Value of the attribute
-    pub value: f64,
 }
 
 /// The tagger provides the functionality for predicting label sequences for input sequences using a model
@@ -34,15 +26,6 @@ pub struct Tagger<'a> {
     #[allow(dead_code)]
     num_attrs: u32,
     level: Level,
-}
-
-impl Attribute {
-    pub fn new<T: Into<String>>(name: T, value: f64) -> Self {
-        Self {
-            name: name.into(),
-            value,
-        }
-    }
 }
 
 impl<'a> Tagger<'a> {
