@@ -48,6 +48,7 @@ impl Default for TrainingParams {
 }
 
 /// CRF Trainer
+#[derive(Debug)]
 pub struct Trainer {
     /// Training instances
     instances: Vec<Instance>,
@@ -150,14 +151,28 @@ impl Trainer {
                 self.params.c2 = c2;
             }
             "num_memories" => {
-                self.params.num_memories = value.parse().map_err(|_| {
+                let num = value.parse().map_err(|_| {
                     io::Error::new(io::ErrorKind::InvalidInput, "invalid num_memories value")
                 })?;
+                if num < 1 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "num_memories must be at least 1",
+                    ));
+                }
+                self.params.num_memories = num;
             }
             "max_iterations" => {
-                self.params.max_iterations = value.parse().map_err(|_| {
+                let max_iterations = value.parse().map_err(|_| {
                     io::Error::new(io::ErrorKind::InvalidInput, "invalid max_iterations value")
                 })?;
+                if max_iterations < 1 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "max_iterations must be at least 1",
+                    ));
+                }
+                self.params.max_iterations = max_iterations;
             }
             "epsilon" => {
                 let epsilon = value.parse().map_err(|_| {
@@ -172,9 +187,16 @@ impl Trainer {
                 self.params.epsilon = epsilon;
             }
             "feature.minfreq" => {
-                self.params.feature_minfreq = value.parse().map_err(|_| {
+                let feature_minfreq = value.parse().map_err(|_| {
                     io::Error::new(io::ErrorKind::InvalidInput, "invalid feature.minfreq value")
                 })?;
+                if feature_minfreq < 0.0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "feature.minfreq must be non-negative",
+                    ));
+                }
+                self.params.feature_minfreq = feature_minfreq;
             }
             _ => {
                 return Err(io::Error::new(
@@ -289,6 +311,9 @@ impl Trainer {
                 let seq_len = inst.num_items as usize;
 
                 // Compute scores
+                // Note: log_likelihood() below will recompute scores internally.
+                // This is redundant but necessary because forward() needs scores.
+                // A future optimization could split log_likelihood to avoid recomputation.
                 ctx.compute_scores(inst, fgen);
 
                 // Forward-backward
@@ -296,7 +321,7 @@ impl Trainer {
                 ctx.backward(seq_len);
                 ctx.compute_marginals(seq_len, log_z);
 
-                // Log-likelihood
+                // Log-likelihood (recomputes scores internally)
                 let log_likelihood = ctx.log_likelihood(inst, fgen);
                 loss -= log_likelihood;
 
@@ -312,10 +337,11 @@ impl Trainer {
             }
 
             // Add L2 regularization
+            // Factor of 2 comes from derivative of c2 * x[i]^2 -> 2 * c2 * x[i]
             if self.params.c2 > 0.0 {
-                let c2_2 = self.params.c2 * 2.0;
+                let two_c2 = self.params.c2 * 2.0;
                 for i in 0..num_features {
-                    gradient[i] += c2_2 * x[i];
+                    gradient[i] += two_c2 * x[i];
                     loss += self.params.c2 * x[i] * x[i];
                 }
             }
@@ -338,6 +364,7 @@ impl Trainer {
         };
 
         // Run L-BFGS optimization
+        // Note: num_memories is stored but liblbfgs doesn't expose a way to set it
         let mut lbfgs = liblbfgs::lbfgs()
             .with_max_iterations(self.params.max_iterations)
             .with_epsilon(self.params.epsilon);
@@ -349,7 +376,7 @@ impl Trainer {
 
         let result = lbfgs
             .minimize(&mut weights, evaluate, progress)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("LBFGS error: {:?}", e)))?;
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("LBFGS error: {}", e)))?;
 
         if self.params.verbose {
             println!("Final loss: {:.6}", result.fx);

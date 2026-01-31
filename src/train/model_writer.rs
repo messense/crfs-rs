@@ -19,31 +19,38 @@ impl ModelWriter {
     ) -> io::Result<()> {
         let mut file = File::create(filename)?;
 
+        // Helper to convert stream position to u32 with overflow check
+        let pos_to_u32 = |pos: u64| -> io::Result<u32> {
+            u32::try_from(pos).map_err(|_| {
+                io::Error::new(io::ErrorKind::InvalidData, "file position exceeds u32::MAX")
+            })
+        };
+
         // Write header
         Self::write_header(&mut file, fgen, labels, attrs)?;
 
         // Write features
-        let off_features = file.stream_position()? as u32;
+        let off_features = pos_to_u32(file.stream_position()?)?;
         Self::write_features(&mut file, fgen)?;
 
         // Write label dictionary (CQDB)
-        let off_labels = file.stream_position()? as u32;
+        let off_labels = pos_to_u32(file.stream_position()?)?;
         Self::write_cqdb(&mut file, labels)?;
 
         // Write attribute dictionary (CQDB)
-        let off_attrs = file.stream_position()? as u32;
+        let off_attrs = pos_to_u32(file.stream_position()?)?;
         Self::write_cqdb(&mut file, attrs)?;
 
         // Write label feature references
-        let off_label_refs = file.stream_position()? as u32;
+        let off_label_refs = pos_to_u32(file.stream_position()?)?;
         Self::write_label_refs(&mut file, fgen)?;
 
         // Write attribute feature references
-        let off_attr_refs = file.stream_position()? as u32;
+        let off_attr_refs = pos_to_u32(file.stream_position()?)?;
         Self::write_attr_refs(&mut file, fgen)?;
 
         // Update header with correct offsets
-        let file_size = file.stream_position()? as u32;
+        let file_size = pos_to_u32(file.stream_position()?)?;
         file.seek(SeekFrom::Start(0))?;
         Self::write_header_with_offsets(
             &mut file,
@@ -116,13 +123,27 @@ impl ModelWriter {
     fn write_features(file: &mut File, fgen: &FeatureGenerator) -> io::Result<()> {
         // Write chunk header
         file.write_all(b"FEAT")?; // chunk ID
-        // Note: chunk_size calculation could overflow for very large num_features (>200M features)
-        // In practice, CRF models rarely exceed millions of features
-        let chunk_size = 12 + fgen.num_features() * 20; // header + features
-        file.write_all(&(chunk_size as u32).to_le_bytes())?;
-        file.write_all(&(fgen.num_features() as u32).to_le_bytes())?;
+
+        // Use checked arithmetic to detect overflow
+        let num_features_u32 = u32::try_from(fgen.num_features()).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "number of features does not fit into u32",
+            )
+        })?;
+        let chunk_size_u64 = 12u64 + (num_features_u32 as u64) * 20u64; // header + features
+        let chunk_size_u32 = u32::try_from(chunk_size_u64).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "feature chunk size exceeds u32::MAX",
+            )
+        })?;
+        file.write_all(&chunk_size_u32.to_le_bytes())?;
+        file.write_all(&num_features_u32.to_le_bytes())?;
 
         // Write each feature
+        // Feature weight is stored as a 64-bit IEEE 754 float in little-endian order,
+        // as required by the CRFsuite binary model format.
         for feature in &fgen.features {
             let ftype = feature.ftype as u32;
             file.write_all(&ftype.to_le_bytes())?;
@@ -150,23 +171,54 @@ impl ModelWriter {
     /// Write label feature references
     fn write_label_refs(file: &mut File, fgen: &FeatureGenerator) -> io::Result<()> {
         let num_labels = fgen.label_refs.len();
-        let chunk_start = file.stream_position()? as u32;
+        let chunk_start = u32::try_from(file.stream_position()?).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "chunk start position exceeds u32::MAX",
+            )
+        })?;
 
-        // Write chunk header
+        // Write chunk header with checked arithmetic
         file.write_all(b"LREF")?; // chunk ID
-        let chunk_size = 12 + num_labels * 4; // header + offsets
-        file.write_all(&(chunk_size as u32).to_le_bytes())?;
-        file.write_all(&(num_labels as u32).to_le_bytes())?;
+        let num_labels_u32 = u32::try_from(num_labels).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "number of labels exceeds u32::MAX",
+            )
+        })?;
+        let chunk_size_u64 = 12u64 + (num_labels_u32 as u64) * 4u64; // header + offsets
+        let chunk_size_u32 = u32::try_from(chunk_size_u64).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "label refs chunk size exceeds u32::MAX",
+            )
+        })?;
+        file.write_all(&chunk_size_u32.to_le_bytes())?;
+        file.write_all(&num_labels_u32.to_le_bytes())?;
 
         // Calculate offsets for each label's feature list (absolute offsets)
-        let mut current_offset = chunk_start + chunk_size as u32;
+        let mut current_offset = chunk_start + chunk_size_u32;
         let mut offsets = Vec::new();
 
         for label_ref in &fgen.label_refs {
             offsets.push(current_offset);
-            // Note: offset calculation could overflow for very large fids.len()
-            // In practice, CRF models have reasonable feature counts per label
-            current_offset += 4 + label_ref.fids.len() as u32 * 4; // count + fids
+            // Use checked arithmetic for offset calculation
+            let fids_len_u32 = u32::try_from(label_ref.fids.len()).map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "feature count for label exceeds u32::MAX",
+                )
+            })?;
+            current_offset = current_offset
+                .checked_add(
+                    4u32.checked_add(fids_len_u32.checked_mul(4).ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidData, "offset calculation overflow")
+                    })?)
+                    .ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidData, "offset calculation overflow")
+                    })?,
+                )
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "offset overflow"))?;
         }
 
         // Write offset table
@@ -188,21 +240,54 @@ impl ModelWriter {
     /// Write attribute feature references
     fn write_attr_refs(file: &mut File, fgen: &FeatureGenerator) -> io::Result<()> {
         let num_attrs = fgen.attr_refs.len();
-        let chunk_start = file.stream_position()? as u32;
+        let chunk_start = u32::try_from(file.stream_position()?).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "chunk start position exceeds u32::MAX",
+            )
+        })?;
 
-        // Write chunk header
+        // Write chunk header with checked arithmetic
         file.write_all(b"AREF")?; // chunk ID
-        let chunk_size = 12 + num_attrs * 4; // header + offsets
-        file.write_all(&(chunk_size as u32).to_le_bytes())?;
-        file.write_all(&(num_attrs as u32).to_le_bytes())?;
+        let num_attrs_u32 = u32::try_from(num_attrs).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "number of attrs exceeds u32::MAX",
+            )
+        })?;
+        let chunk_size_u64 = 12u64 + (num_attrs_u32 as u64) * 4u64; // header + offsets
+        let chunk_size_u32 = u32::try_from(chunk_size_u64).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "attr refs chunk size exceeds u32::MAX",
+            )
+        })?;
+        file.write_all(&chunk_size_u32.to_le_bytes())?;
+        file.write_all(&num_attrs_u32.to_le_bytes())?;
 
         // Calculate offsets for each attribute's feature list (absolute offsets)
-        let mut current_offset = chunk_start + chunk_size as u32;
+        let mut current_offset = chunk_start + chunk_size_u32;
         let mut offsets = Vec::new();
 
         for attr_ref in &fgen.attr_refs {
             offsets.push(current_offset);
-            current_offset += 4 + attr_ref.fids.len() as u32 * 4; // count + fids
+            // Use checked arithmetic for offset calculation
+            let fids_len_u32 = u32::try_from(attr_ref.fids.len()).map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "feature count for attr exceeds u32::MAX",
+                )
+            })?;
+            current_offset = current_offset
+                .checked_add(
+                    4u32.checked_add(fids_len_u32.checked_mul(4).ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidData, "offset calculation overflow")
+                    })?)
+                    .ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidData, "offset calculation overflow")
+                    })?,
+                )
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "offset overflow"))?;
         }
 
         // Write offset table

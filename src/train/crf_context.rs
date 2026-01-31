@@ -19,6 +19,8 @@ pub struct CrfContext {
     marginals: Vec<Vec<f64>>,
     /// Transition marginals [time][prev_label][label]
     trans_marginals: Vec<Vec<Vec<f64>>>,
+    /// Reusable buffer for log-sum-exp computations
+    log_buffer: Vec<f64>,
 }
 
 impl CrfContext {
@@ -33,6 +35,7 @@ impl CrfContext {
             beta: vec![vec![f64::NEG_INFINITY; num_labels]; max_items],
             marginals: vec![vec![0.0; num_labels]; max_items],
             trans_marginals: vec![vec![vec![0.0; num_labels]; num_labels]; max_items],
+            log_buffer: vec![0.0; num_labels],
         }
     }
 
@@ -106,26 +109,23 @@ impl CrfContext {
             self.alpha[0][l] = self.state_scores[0][l];
         }
 
-        // Forward recursion
+        // Forward recursion - reuse log_buffer to avoid allocations
         for t in 1..seq_len {
             for l in 0..self.num_labels {
-                let mut log_values = Vec::with_capacity(self.num_labels);
                 for prev_l in 0..self.num_labels {
-                    log_values.push(
-                        self.alpha[t - 1][prev_l]
-                            + self.trans_scores[prev_l][l]
-                            + self.state_scores[t][l],
-                    );
+                    self.log_buffer[prev_l] = self.alpha[t - 1][prev_l]
+                        + self.trans_scores[prev_l][l]
+                        + self.state_scores[t][l];
                 }
-                self.alpha[t][l] = Self::logsumexp(&log_values);
+                self.alpha[t][l] = Self::logsumexp(&self.log_buffer[..self.num_labels]);
             }
         }
 
         // Compute log partition function
-        let log_values: Vec<f64> = (0..self.num_labels)
-            .map(|l| self.alpha[seq_len - 1][l])
-            .collect();
-        Self::logsumexp(&log_values)
+        for l in 0..self.num_labels {
+            self.log_buffer[l] = self.alpha[seq_len - 1][l];
+        }
+        Self::logsumexp(&self.log_buffer[..self.num_labels])
     }
 
     /// Backward algorithm in log space
@@ -135,18 +135,15 @@ impl CrfContext {
             self.beta[seq_len - 1][l] = 0.0; // log(1) = 0
         }
 
-        // Backward recursion
+        // Backward recursion - reuse log_buffer to avoid allocations
         for t in (0..seq_len - 1).rev() {
             for l in 0..self.num_labels {
-                let mut log_values = Vec::with_capacity(self.num_labels);
                 for next_l in 0..self.num_labels {
-                    log_values.push(
-                        self.beta[t + 1][next_l]
-                            + self.trans_scores[l][next_l]
-                            + self.state_scores[t + 1][next_l],
-                    );
+                    self.log_buffer[next_l] = self.beta[t + 1][next_l]
+                        + self.trans_scores[l][next_l]
+                        + self.state_scores[t + 1][next_l];
                 }
-                self.beta[t][l] = Self::logsumexp(&log_values);
+                self.beta[t][l] = Self::logsumexp(&self.log_buffer[..self.num_labels]);
             }
         }
     }
@@ -242,13 +239,14 @@ impl CrfContext {
 
         // State feature observations
         for t in 0..seq_len {
-            let label = inst.labels[t];
+            let label_id = inst.labels[t]; // u32 label ID for this timestep
             for attr in &inst.items[t] {
                 let aid = attr.id as usize;
                 if aid < fgen.attr_refs.len() {
                     for &fid in &fgen.attr_refs[aid].fids {
                         let feature = &fgen.features[fid as usize];
-                        if feature.ftype == FeatureType::State && feature.dst == label {
+                        // feature.dst is the target label ID for this state feature
+                        if feature.ftype == FeatureType::State && feature.dst == label_id {
                             counts[fid as usize] += attr.value;
                         }
                     }

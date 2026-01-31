@@ -29,21 +29,24 @@ fn test_basic_training() {
     trainer.set("c2", "1.0").unwrap();
     trainer.set("max_iterations", "50").unwrap();
 
-    // Train
-    let model_path = std::env::temp_dir().join("test_model.crfsuite");
-    let result = trainer.train(model_path.to_str().unwrap());
+    // Use NamedTempFile for automatic cleanup on panic
+    let temp_file = tempfile::NamedTempFile::new().unwrap();
+    let model_path = temp_file.path().to_str().unwrap();
+    let result = trainer.train(model_path);
 
     // Check that training completed
     match result {
         Ok(_) => {
             println!("Training completed successfully!");
             // Check that model file was created
-            assert!(model_path.exists());
+            assert!(temp_file.path().exists());
         }
         Err(e) => {
             panic!("Training failed: {}", e);
         }
     }
+
+    // temp_file is automatically cleaned up when it goes out of scope
 }
 
 #[test]
@@ -56,7 +59,10 @@ fn test_trainer_params() {
     trainer.set("max_iterations", "100").unwrap();
 
     assert_eq!(trainer.get("c1").unwrap(), "0.5");
-    assert_eq!(trainer.get("c2").unwrap(), "2");
+    // Note: Rust's f64::to_string() formats 2.0 as "2" without decimal
+    // We parse back to f64 for robust comparison
+    let c2_value: f64 = trainer.get("c2").unwrap().parse().unwrap();
+    assert!((c2_value - 2.0).abs() < f64::EPSILON);
     assert_eq!(trainer.get("max_iterations").unwrap(), "100");
 }
 
@@ -64,13 +70,18 @@ fn test_trainer_params() {
 fn test_trainer_validation() {
     let mut trainer = Trainer::new(false);
 
+    // Use NamedTempFile for automatic cleanup on panic
+    let temp_file = tempfile::NamedTempFile::new().unwrap();
+    let model_path = temp_file.path().to_str().unwrap();
+
     // Should fail without algorithm selection
-    let model_path = std::env::temp_dir().join("test.crfsuite");
-    let result = trainer.train(model_path.to_str().unwrap());
+    let result = trainer.train(model_path);
     assert!(result.is_err());
 
     // Should fail without training data
     trainer.select(Algorithm::LBFGS).unwrap();
-    let result = trainer.train(model_path.to_str().unwrap());
+    let result = trainer.train(model_path);
     assert!(result.is_err());
+
+    // temp_file is automatically cleaned up when it goes out of scope
 }

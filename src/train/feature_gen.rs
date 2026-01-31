@@ -72,6 +72,9 @@ impl FeatureGenerator {
             let seq_len = inst.num_items as usize;
 
             // Count state features
+            // State feature frequencies are weighted by attribute values (attr.value),
+            // which allows for real-valued feature weights. Transition features are
+            // binary (either present or not), so they use 1.0 for each occurrence.
             for t in 0..seq_len {
                 let label = inst.labels[t];
                 for attr in &inst.items[t] {

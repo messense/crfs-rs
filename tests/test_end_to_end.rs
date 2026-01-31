@@ -27,14 +27,16 @@ fn test_train_save_load_predict() {
     trainer.set("c2", "1.0").unwrap();
     trainer.set("max_iterations", "100").unwrap();
 
-    let model_path = std::env::temp_dir().join("test_e2e_model.crfsuite");
-    trainer.train(model_path.to_str().unwrap()).unwrap();
+    // Use NamedTempFile for automatic cleanup on panic
+    let temp_file = tempfile::NamedTempFile::new().unwrap();
+    let model_path = temp_file.path().to_str().unwrap();
+    trainer.train(model_path).unwrap();
 
     // Verify model file exists
-    assert!(model_path.exists());
+    assert!(temp_file.path().exists());
 
     // Load model
-    let model_data = std::fs::read(&model_path).unwrap();
+    let model_data = std::fs::read(temp_file.path()).unwrap();
     let model = Model::new(&model_data).unwrap();
 
     // Verify model metadata
@@ -94,8 +96,7 @@ fn test_train_save_load_predict() {
     println!("Training accuracy: {:.2}%", accuracy * 100.0);
     assert!(accuracy > 0.5, "Training accuracy too low: {}", accuracy);
 
-    // Clean up
-    std::fs::remove_file(&model_path).unwrap();
+    // temp_file is automatically cleaned up when it goes out of scope
 }
 
 #[test]
@@ -115,11 +116,13 @@ fn test_model_persistence() {
     trainer.set("c2", "1.0").unwrap();
     trainer.set("max_iterations", "50").unwrap();
 
-    let model_path = std::env::temp_dir().join("test_persistence.crfsuite");
-    trainer.train(model_path.to_str().unwrap()).unwrap();
+    // Use NamedTempFile for automatic cleanup on panic
+    let temp_file = tempfile::NamedTempFile::new().unwrap();
+    let model_path = temp_file.path().to_str().unwrap();
+    trainer.train(model_path).unwrap();
 
     // Load and predict
-    let model_data = std::fs::read(&model_path).unwrap();
+    let model_data = std::fs::read(temp_file.path()).unwrap();
     let model = Model::new(&model_data).unwrap();
     let mut tagger = model.tagger().unwrap();
 
@@ -134,8 +137,7 @@ fn test_model_persistence() {
     assert_eq!(result[0], "X");
     assert_eq!(result[1], "Y");
 
-    // Clean up
-    std::fs::remove_file(&model_path).unwrap();
+    // temp_file is automatically cleaned up when it goes out of scope
 }
 
 #[test]
@@ -149,12 +151,13 @@ fn test_empty_sequence() {
     trainer.append(&xseq, &yseq).unwrap();
     trainer.set("c2", "1.0").unwrap();
 
-    let model_path = std::env::temp_dir().join("test_empty.crfsuite");
-    let result = trainer.train(model_path.to_str().unwrap());
+    // Use NamedTempFile for automatic cleanup on panic
+    let temp_file = tempfile::NamedTempFile::new().unwrap();
+    let model_path = temp_file.path().to_str().unwrap();
+    let result = trainer.train(model_path);
 
     // Should handle empty items gracefully
     assert!(result.is_ok());
 
-    // Clean up if file was created
-    let _ = std::fs::remove_file(&model_path);
+    // temp_file is automatically cleaned up when it goes out of scope
 }
