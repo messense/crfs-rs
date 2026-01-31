@@ -192,18 +192,19 @@ impl ModelWriter {
                 "number of labels exceeds u32::MAX",
             )
         })?;
-        let chunk_size_u64 = 12u64 + (num_labels_u32 as u64) * 4u64; // header + offsets
-        let chunk_size_u32 = u32::try_from(chunk_size_u64).map_err(|_| {
+        let header_size_u64 = 12u64 + (num_labels_u32 as u64) * 4u64; // header + offsets
+        let header_size_u32 = u32::try_from(header_size_u64).map_err(|_| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
-                "label refs chunk size exceeds u32::MAX",
+                "label refs header size exceeds u32::MAX",
             )
         })?;
-        file.write_all(&chunk_size_u32.to_le_bytes())?;
+        // Placeholder size; will be updated after writing all lists, matching CRFsuite.
+        file.write_all(&0u32.to_le_bytes())?;
         file.write_all(&num_labels_u32.to_le_bytes())?;
 
         // Calculate offsets for each label's feature list (absolute offsets)
-        let mut current_offset = chunk_start + chunk_size_u32;
+        let mut current_offset = chunk_start + header_size_u32;
         let mut offsets = Vec::new();
 
         for label_ref in &fgen.label_refs {
@@ -240,6 +241,21 @@ impl ModelWriter {
             }
         }
 
+        // Update chunk size to include header, offsets, and lists
+        let end_pos = file.stream_position()?;
+        let chunk_size_u64 = end_pos
+            .checked_sub(u64::from(chunk_start))
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "chunk size underflow"))?;
+        let chunk_size_u32 = u32::try_from(chunk_size_u64).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "label refs chunk size exceeds u32::MAX",
+            )
+        })?;
+        file.seek(SeekFrom::Start(u64::from(chunk_start) + 4))?;
+        file.write_all(&chunk_size_u32.to_le_bytes())?;
+        file.seek(SeekFrom::Start(end_pos))?;
+
         Ok(())
     }
 
@@ -261,18 +277,19 @@ impl ModelWriter {
                 "number of attrs exceeds u32::MAX",
             )
         })?;
-        let chunk_size_u64 = 12u64 + (num_attrs_u32 as u64) * 4u64; // header + offsets
-        let chunk_size_u32 = u32::try_from(chunk_size_u64).map_err(|_| {
+        let header_size_u64 = 12u64 + (num_attrs_u32 as u64) * 4u64; // header + offsets
+        let header_size_u32 = u32::try_from(header_size_u64).map_err(|_| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
-                "attr refs chunk size exceeds u32::MAX",
+                "attr refs header size exceeds u32::MAX",
             )
         })?;
-        file.write_all(&chunk_size_u32.to_le_bytes())?;
+        // Placeholder size; will be updated after writing all lists, matching CRFsuite.
+        file.write_all(&0u32.to_le_bytes())?;
         file.write_all(&num_attrs_u32.to_le_bytes())?;
 
         // Calculate offsets for each attribute's feature list (absolute offsets)
-        let mut current_offset = chunk_start + chunk_size_u32;
+        let mut current_offset = chunk_start + header_size_u32;
         let mut offsets = Vec::new();
 
         for attr_ref in &fgen.attr_refs {
@@ -308,6 +325,21 @@ impl ModelWriter {
                 file.write_all(&fid.to_le_bytes())?;
             }
         }
+
+        // Update chunk size to include header, offsets, and lists
+        let end_pos = file.stream_position()?;
+        let chunk_size_u64 = end_pos
+            .checked_sub(u64::from(chunk_start))
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "chunk size underflow"))?;
+        let chunk_size_u32 = u32::try_from(chunk_size_u64).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "attr refs chunk size exceeds u32::MAX",
+            )
+        })?;
+        file.seek(SeekFrom::Start(u64::from(chunk_start) + 4))?;
+        file.write_all(&chunk_size_u32.to_le_bytes())?;
+        file.seek(SeekFrom::Start(end_pos))?;
 
         Ok(())
     }
