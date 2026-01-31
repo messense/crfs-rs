@@ -176,10 +176,21 @@ impl CrfContext {
         }
     }
 
-    /// Compute expected feature counts (for gradient)
+    /// Compute expected feature counts (from marginals)
     pub fn expected_counts(&self, inst: &Instance, fgen: &FeatureGenerator) -> Vec<f64> {
-        let seq_len = inst.num_items as usize;
         let mut counts = vec![0.0; fgen.num_features()];
+        self.expected_counts_into(inst, fgen, &mut counts);
+        counts
+    }
+
+    /// Compute expected feature counts into a pre-allocated vector
+    pub fn expected_counts_into(
+        &self,
+        inst: &Instance,
+        fgen: &FeatureGenerator,
+        counts: &mut [f64],
+    ) {
+        let seq_len = inst.num_items as usize;
 
         // State feature expectations
         for t in 0..seq_len {
@@ -211,14 +222,23 @@ impl CrfContext {
                 }
             }
         }
-
-        counts
     }
 
     /// Compute observed feature counts (from labels)
     pub fn observed_counts(&self, inst: &Instance, fgen: &FeatureGenerator) -> Vec<f64> {
-        let seq_len = inst.num_items as usize;
         let mut counts = vec![0.0; fgen.num_features()];
+        self.observed_counts_into(inst, fgen, &mut counts);
+        counts
+    }
+
+    /// Compute observed feature counts into a pre-allocated vector
+    pub fn observed_counts_into(
+        &self,
+        inst: &Instance,
+        fgen: &FeatureGenerator,
+        counts: &mut [f64],
+    ) {
+        let seq_len = inst.num_items as usize;
 
         // State feature observations
         for t in 0..seq_len {
@@ -253,8 +273,6 @@ impl CrfContext {
                 }
             }
         }
-
-        counts
     }
 
     /// Compute log-likelihood for an instance.

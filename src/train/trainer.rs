@@ -271,8 +271,10 @@ impl Trainer {
         // Create CRF context
         let mut ctx = CrfContext::new(num_labels, max_items);
 
-        // Pre-allocate gradient vector to avoid repeated allocations
+        // Pre-allocate vectors to avoid repeated allocations in the optimization loop
         let mut gradient = vec![0.0; num_features];
+        let mut expected = vec![0.0; num_features];
+        let mut observed = vec![0.0; num_features];
 
         // Objective function: negative log-likelihood + L2 regularization
         let evaluate = |x: &[f64], gx: &mut [f64]| -> Result<f64, anyhow::Error> {
@@ -299,8 +301,11 @@ impl Trainer {
                 loss -= log_likelihood;
 
                 // Gradient = expected - observed
-                let expected = ctx.expected_counts(inst, fgen);
-                let observed = ctx.observed_counts(inst, fgen);
+                // Reuse pre-allocated vectors
+                expected.fill(0.0);
+                observed.fill(0.0);
+                ctx.expected_counts_into(inst, fgen, &mut expected);
+                ctx.observed_counts_into(inst, fgen, &mut observed);
                 for i in 0..num_features {
                     gradient[i] += expected[i] - observed[i];
                 }
