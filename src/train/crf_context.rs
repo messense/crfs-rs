@@ -83,7 +83,10 @@ impl CrfContext {
         }
     }
 
-    /// Log-sum-exp trick for numerical stability
+    /// Log-sum-exp trick for numerical stability.
+    ///
+    /// Computes log(sum(exp(values))) in a numerically stable way.
+    /// Returns NEG_INFINITY for empty arrays or arrays where all values are NEG_INFINITY.
     fn logsumexp(values: &[f64]) -> f64 {
         if values.is_empty() {
             return f64::NEG_INFINITY;
@@ -254,7 +257,13 @@ impl CrfContext {
         counts
     }
 
-    /// Compute log-likelihood for an instance
+    /// Compute log-likelihood for an instance.
+    ///
+    /// This method recomputes the state and transition scores for `inst` by
+    /// calling [`compute_scores`](Self::compute_scores) internally before running the forward
+    /// algorithm. Callers should *not* call `compute_scores` immediately
+    /// before invoking this method, as that would result in redundant
+    /// computation.
     pub fn log_likelihood(&mut self, inst: &Instance, fgen: &FeatureGenerator) -> f64 {
         let seq_len = inst.num_items as usize;
         self.compute_scores(inst, fgen);

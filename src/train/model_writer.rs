@@ -116,6 +116,8 @@ impl ModelWriter {
     fn write_features(file: &mut File, fgen: &FeatureGenerator) -> io::Result<()> {
         // Write chunk header
         file.write_all(b"FEAT")?; // chunk ID
+        // Note: chunk_size calculation could overflow for very large num_features (>200M features)
+        // In practice, CRF models rarely exceed millions of features
         let chunk_size = 12 + fgen.num_features() * 20; // header + features
         file.write_all(&(chunk_size as u32).to_le_bytes())?;
         file.write_all(&(fgen.num_features() as u32).to_le_bytes())?;
@@ -162,6 +164,8 @@ impl ModelWriter {
 
         for label_ref in &fgen.label_refs {
             offsets.push(current_offset);
+            // Note: offset calculation could overflow for very large fids.len()
+            // In practice, CRF models have reasonable feature counts per label
             current_offset += 4 + label_ref.fids.len() as u32 * 4; // count + fids
         }
 

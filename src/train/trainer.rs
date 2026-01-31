@@ -126,14 +126,28 @@ impl Trainer {
     pub fn set(&mut self, name: &str, value: &str) -> io::Result<()> {
         match name {
             "c1" => {
-                self.params.c1 = value
+                let c1 = value
                     .parse()
                     .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid c1 value"))?;
+                if c1 < 0.0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "c1 must be non-negative",
+                    ));
+                }
+                self.params.c1 = c1;
             }
             "c2" => {
-                self.params.c2 = value
+                let c2 = value
                     .parse()
                     .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid c2 value"))?;
+                if c2 < 0.0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "c2 must be non-negative",
+                    ));
+                }
+                self.params.c2 = c2;
             }
             "num_memories" => {
                 self.params.num_memories = value.parse().map_err(|_| {
@@ -146,9 +160,16 @@ impl Trainer {
                 })?;
             }
             "epsilon" => {
-                self.params.epsilon = value.parse().map_err(|_| {
+                let epsilon = value.parse().map_err(|_| {
                     io::Error::new(io::ErrorKind::InvalidInput, "invalid epsilon value")
                 })?;
+                if epsilon <= 0.0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "epsilon must be > 0.0",
+                    ));
+                }
+                self.params.epsilon = epsilon;
             }
             "feature.minfreq" => {
                 self.params.feature_minfreq = value.parse().map_err(|_| {
@@ -250,13 +271,16 @@ impl Trainer {
         // Create CRF context
         let mut ctx = CrfContext::new(num_labels, max_items);
 
+        // Pre-allocate gradient vector to avoid repeated allocations
+        let mut gradient = vec![0.0; num_features];
+
         // Objective function: negative log-likelihood + L2 regularization
         let evaluate = |x: &[f64], gx: &mut [f64]| -> Result<f64, anyhow::Error> {
             // Update feature weights
             fgen.set_weights(x);
 
             let mut loss = 0.0;
-            let mut gradient = vec![0.0; num_features];
+            gradient.fill(0.0);
 
             // Compute loss and gradient for each instance
             for inst in &self.instances {

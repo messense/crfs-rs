@@ -50,7 +50,11 @@ pub struct FeatureGenerator {
 }
 
 impl FeatureGenerator {
-    /// Generate features from training instances
+    /// Generate features from training instances.
+    ///
+    /// Features with frequency >= `min_freq` are included. Features with frequency
+    /// exactly equal to `min_freq` are included. The default `min_freq` of 0.0
+    /// ensures all features that occur at least once are included.
     pub fn generate(
         instances: &[Instance],
         attrs: &Dictionary,
