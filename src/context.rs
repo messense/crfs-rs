@@ -231,7 +231,7 @@ impl Context {
         (labels, max_score)
     }
 
-    /// Optimized Viterbi for medium L values (6-15)
+    /// Optimized Viterbi for medium L values (6-16)
     /// Uses manual loop unrolling to help compiler auto-vectorize
     #[inline]
     fn viterbi_unrolled<const L: usize>(&mut self) -> (Vec<u32>, f64) {
@@ -265,19 +265,19 @@ impl Context {
                     let s2 = prev[i + 2] + trans_col[i + 2];
                     let s3 = prev[i + 3] + trans_col[i + 3];
 
-                    if s0 > max_score {
+                    if max_score < s0 {
                         max_score = s0;
                         argmax_score = i;
                     }
-                    if s1 > max_score {
+                    if max_score < s1 {
                         max_score = s1;
                         argmax_score = i + 1;
                     }
-                    if s2 > max_score {
+                    if max_score < s2 {
                         max_score = s2;
                         argmax_score = i + 2;
                     }
-                    if s3 > max_score {
+                    if max_score < s3 {
                         max_score = s3;
                         argmax_score = i + 3;
                     }
@@ -286,7 +286,7 @@ impl Context {
                 // Handle remainder
                 for i in (chunks * 4)..L {
                     let score = prev[i] + trans_col[i];
-                    if score > max_score {
+                    if max_score < score {
                         max_score = score;
                         argmax_score = i;
                     }
