@@ -26,6 +26,8 @@ pub enum Algorithm {
     LBFGS,
     /// Averaged Perceptron
     AveragedPerceptron,
+    /// Passive Aggressive
+    PassiveAggressive,
 }
 
 /// Training parameters
@@ -47,6 +49,14 @@ pub struct TrainingParams {
     pub shuffle_seed: Option<u64>,
     /// Enable verbose output
     pub verbose: bool,
+    /// PA type: 0 (PA), 1 (PA-I), 2 (PA-II)
+    pub pa_type: usize,
+    /// PA aggressiveness parameter
+    pub pa_c: f64,
+    /// PA cost function uses error-sensitive variant when true
+    pub pa_error_sensitive: bool,
+    /// PA weight averaging (similarly to Averaged Perceptron)
+    pub pa_averaging: bool,
 }
 
 impl Default for TrainingParams {
@@ -60,6 +70,10 @@ impl Default for TrainingParams {
             feature_minfreq: 0.0,
             shuffle_seed: None,
             verbose: false,
+            pa_type: 1,
+            pa_c: 1.0,
+            pa_error_sensitive: true,
+            pa_averaging: true,
         }
     }
 }
@@ -214,10 +228,10 @@ impl Trainer {
                 let epsilon = value.parse().map_err(|_| {
                     io::Error::new(io::ErrorKind::InvalidInput, "invalid epsilon value")
                 })?;
-                if epsilon <= 0.0 {
+                if epsilon < 0.0 {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidInput,
-                        "epsilon must be > 0.0",
+                        "epsilon must be non-negative",
                     ));
                 }
                 self.params.epsilon = epsilon;
@@ -244,6 +258,54 @@ impl Trainer {
                     self.params.shuffle_seed = Some(seed);
                 }
             }
+            "type" => {
+                let pa_type = value.parse().map_err(|_| {
+                    io::Error::new(io::ErrorKind::InvalidInput, "invalid type value")
+                })?;
+                if pa_type > 2 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "type must be 0, 1, or 2",
+                    ));
+                }
+                self.params.pa_type = pa_type;
+            }
+            "c" => {
+                let pa_c = value
+                    .parse()
+                    .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid c value"))?;
+                if pa_c <= 0.0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "c must be positive",
+                    ));
+                }
+                self.params.pa_c = pa_c;
+            }
+            "error_sensitive" => {
+                let error_sensitive: u8 = value.parse().map_err(|_| {
+                    io::Error::new(io::ErrorKind::InvalidInput, "invalid error_sensitive value")
+                })?;
+                if error_sensitive > 1 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "error_sensitive must be 0 or 1",
+                    ));
+                }
+                self.params.pa_error_sensitive = error_sensitive == 1;
+            }
+            "averaging" => {
+                let averaging: u8 = value.parse().map_err(|_| {
+                    io::Error::new(io::ErrorKind::InvalidInput, "invalid averaging value")
+                })?;
+                if averaging > 1 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "averaging must be 0 or 1",
+                    ));
+                }
+                self.params.pa_averaging = averaging == 1;
+            }
             _ => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -268,6 +330,18 @@ impl Trainer {
                 .shuffle_seed
                 .map(|seed| seed.to_string())
                 .unwrap_or_else(|| "auto".to_string())),
+            "type" => Ok(self.params.pa_type.to_string()),
+            "c" => Ok(self.params.pa_c.to_string()),
+            "error_sensitive" => Ok(if self.params.pa_error_sensitive {
+                "1".to_string()
+            } else {
+                "0".to_string()
+            }),
+            "averaging" => Ok(if self.params.pa_averaging {
+                "1".to_string()
+            } else {
+                "0".to_string()
+            }),
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!("unknown parameter: {}", name),
@@ -305,6 +379,7 @@ impl Trainer {
         match self.algorithm {
             Algorithm::LBFGS => self.train_lbfgs(&mut fgen)?,
             Algorithm::AveragedPerceptron => self.train_averaged_perceptron(&mut fgen)?,
+            Algorithm::PassiveAggressive => self.train_passive_aggressive(&mut fgen)?,
         }
 
         // Save model
@@ -585,6 +660,152 @@ impl Trainer {
         }
 
         counts
+    }
+
+    fn train_passive_aggressive(&mut self, fgen: &mut FeatureGenerator) -> io::Result<()> {
+        let num_features = fgen.num_features();
+        let num_labels = self.labels.len();
+        let num_instances = self.instances.len() as f64;
+        let max_items = self
+            .instances
+            .iter()
+            .map(|inst| inst.num_items as usize)
+            .max()
+            .unwrap_or(0);
+
+        // Initialize weights to zero
+        let mut weights = vec![0.0; num_features];
+        let mut summed_updates = vec![0.0; num_features];
+        let mut update_counter = 1.0;
+        let c = self.params.pa_c;
+        let pa_type = self.params.pa_type;
+        let error_sensitive = self.params.pa_error_sensitive;
+        let averaging = self.params.pa_averaging;
+
+        // Create CRF context
+        let mut ctx = CrfContext::new(num_labels, max_items);
+        let mut order: Vec<usize> = (0..self.instances.len()).collect();
+        let mut rng = match self.params.shuffle_seed {
+            Some(seed) => StdRng::seed_from_u64(seed),
+            None => StdRng::from_entropy(),
+        };
+
+        if self.params.verbose {
+            println!("Training with Passive Aggressive (PA-{})...", pa_type);
+        }
+
+        // Training loop
+        for epoch in 0..self.params.max_iterations {
+            let mut sum_loss = 0.0;
+
+            if order.len() > 1 {
+                shuffle_indices(&mut order, &mut rng);
+            }
+
+            for &idx in &order {
+                let inst = &self.instances[idx];
+                let seq_len = inst.num_items as usize;
+
+                // Predict with current weights
+                fgen.set_weights(&weights);
+                ctx.compute_scores(inst, fgen);
+                let predicted = ctx.viterbi_decode(seq_len);
+
+                // Compute Hamming distance (number of incorrect labels)
+                let mut num_diff = 0;
+                for t in 0..seq_len {
+                    if predicted[t] != inst.labels[t] {
+                        num_diff += 1;
+                    }
+                }
+
+                if num_diff > 0 {
+                    let pred_score = ctx.sequence_score(&predicted);
+                    let true_score = ctx.sequence_score(&inst.labels);
+                    let err = pred_score - true_score;
+                    let cost = if error_sensitive {
+                        err + (num_diff as f64).sqrt()
+                    } else {
+                        err + 1.0
+                    };
+
+                    // Extract features for true and predicted labels
+                    let true_counts = self.extract_features(inst, &inst.labels, fgen);
+                    let pred_counts = self.extract_features(inst, &predicted, fgen);
+
+                    // Compute feature difference
+                    let mut diff = vec![0.0; num_features];
+                    let mut norm_sq = 0.0;
+                    for i in 0..num_features {
+                        let delta = true_counts[i] - pred_counts[i];
+                        diff[i] = delta;
+                        norm_sq += delta * delta;
+                    }
+
+                    // Compute update magnitude (tau) based on PA variant
+                    let tau = if norm_sq > 0.0 {
+                        match pa_type {
+                            0 => {
+                                // PA (no slack): tau = cost / ||diff||^2
+                                cost / norm_sq
+                            }
+                            1 => {
+                                // PA-I (soft margin): tau = min(C, cost / ||diff||^2)
+                                (cost / norm_sq).min(c)
+                            }
+                            2 => {
+                                // PA-II (squared slack): tau = cost / (||diff||^2 + 1/(2*C))
+                                cost / (norm_sq + 1.0 / (2.0 * c))
+                            }
+                            _ => unreachable!(),
+                        }
+                    } else {
+                        0.0
+                    };
+
+                    // Update weights: w += tau * diff
+                    let scaled_tau = tau * inst.weight;
+                    for i in 0..num_features {
+                        let delta = diff[i];
+                        weights[i] += scaled_tau * delta;
+                        if averaging {
+                            summed_updates[i] += scaled_tau * update_counter * delta;
+                        }
+                    }
+
+                    sum_loss += cost * inst.weight;
+                }
+
+                update_counter += 1.0;
+            }
+
+            if self.params.verbose {
+                let feature_norm: f64 = weights.iter().map(|w| w * w).sum::<f64>().sqrt();
+                println!(
+                    "Epoch {}: loss = {:.6}, feature_norm = {:.6}",
+                    epoch + 1,
+                    sum_loss,
+                    feature_norm
+                );
+            }
+
+            if num_instances > 0.0 && sum_loss / num_instances < self.params.epsilon {
+                if self.params.verbose {
+                    println!("Converged at epoch {}", epoch + 1);
+                }
+                break;
+            }
+        }
+
+        // Update feature weights
+        if averaging {
+            for i in 0..num_features {
+                weights[i] -= summed_updates[i] / update_counter;
+            }
+        }
+        fgen.set_weights(&weights);
+
+        Ok(())
     }
 }
 

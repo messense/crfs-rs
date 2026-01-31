@@ -321,6 +321,27 @@ impl CrfContext {
         labels
     }
 
+    /// Compute the score for a given label sequence using pre-computed scores.
+    ///
+    /// This method assumes that [`compute_scores`](Self::compute_scores) has already been
+    /// called. It sums state and transition scores along the provided path.
+    pub fn sequence_score(&self, labels: &[u32]) -> f64 {
+        if labels.is_empty() {
+            return 0.0;
+        }
+
+        let mut score = 0.0;
+        for t in 0..labels.len() {
+            let label = labels[t] as usize;
+            score += self.state_scores[t][label];
+            if t > 0 {
+                let prev_label = labels[t - 1] as usize;
+                score += self.trans_scores[prev_label][label];
+            }
+        }
+        score
+    }
+
     /// Compute log-likelihood for an instance using pre-computed scores.
     ///
     /// This method assumes that [`compute_scores`](Self::compute_scores) has already been
