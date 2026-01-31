@@ -189,6 +189,10 @@ impl ModelWriter {
     /// Write label feature references
     fn write_label_refs(file: &mut File, fgen: &FeatureGenerator) -> io::Result<()> {
         let num_labels = fgen.label_refs.len();
+        // CRFsuite stores the label reference table with two extra entries in addition to
+        // the actual labels (e.g., for special sentinel/BOS/EOS labels required by the
+        // binary model format). We therefore allocate space for `num_labels + 2` entries
+        // in this section rather than just `num_labels`.
         let total_labels = num_labels
             .checked_add(2)
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "label count overflow"))?;
