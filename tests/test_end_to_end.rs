@@ -98,6 +98,37 @@ fn test_train_save_load_predict() {
     // temp_file is automatically cleaned up when it goes out of scope
 }
 
+/// Test that Tagger::tag can be called with an immutable reference (&self).
+/// This enables concurrent tagging from multiple threads using a single Tagger instance.
+#[test]
+fn test_tagger_tag_is_immutable() {
+    let xseq = vec![
+        vec![Attribute::new("walk", 1.0)],
+        vec![Attribute::new("shop", 1.0)],
+    ];
+    let yseq = vec!["sunny", "rainy"];
+
+    let mut trainer = Trainer::new(Algorithm::LBFGS);
+    trainer.append(&xseq, &yseq).unwrap();
+    trainer.set("c2", "1.0").unwrap();
+
+    let temp_file = tempfile::NamedTempFile::new().unwrap();
+    trainer.train(temp_file.path()).unwrap();
+
+    let model_data = std::fs::read(temp_file.path()).unwrap();
+    let model = Model::new(&model_data).unwrap();
+    let tagger = model.tagger().unwrap();
+
+    let seq1 = vec![vec![Attribute::new("walk", 1.0)]];
+    let seq2 = vec![vec![Attribute::new("shop", 1.0)]];
+
+    let res1 = tagger.tag(&seq1).unwrap();
+    let res2 = tagger.tag(&seq2).unwrap();
+
+    assert_eq!(res1.len(), 1);
+    assert_eq!(res2.len(), 1);
+}
+
 #[test]
 fn test_model_persistence() {
     // Train a simple model
