@@ -1,4 +1,5 @@
 use std::io;
+use std::path::Path;
 
 use super::crf_context::CrfContext;
 use super::dictionary::Dictionary;
@@ -225,7 +226,7 @@ impl Trainer {
     }
 
     /// Train the model and save to file
-    pub fn train(&mut self, filename: &str) -> io::Result<()> {
+    pub fn train(&mut self, filename: &Path) -> io::Result<()> {
         if self.algorithm.is_none() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -265,7 +266,7 @@ impl Trainer {
 
         // Save model
         if self.params.verbose {
-            println!("Saving model to {}...", filename);
+            println!("Saving model to {}...", filename.display());
         }
         ModelWriter::write(filename, &fgen, &self.labels, &self.attrs)?;
 

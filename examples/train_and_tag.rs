@@ -43,7 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Train
     let model_path = std::env::temp_dir().join("example_model.crfsuite");
     println!("Training model...\n");
-    trainer.train(model_path.to_str().unwrap())?;
+    trainer.train(&model_path)?;
 
     println!("\n=================================");
     println!("Training completed successfully!");

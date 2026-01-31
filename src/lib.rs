@@ -9,6 +9,7 @@
 //! ```no_run
 //! use crfs::train::{Algorithm, Trainer};
 //! use crfs::Attribute;
+//! use std::path::Path;
 //!
 //! let mut trainer = Trainer::new(true);
 //! trainer.select(Algorithm::LBFGS)?;
@@ -21,7 +22,7 @@
 //! trainer.append(&xseq, &yseq)?;
 //!
 //! trainer.set("c2", "1.0")?;
-//! trainer.train("model.crfsuite")?;
+//! trainer.train(Path::new("model.crfsuite"))?;
 //! # Ok::<(), std::io::Error>(())
 //! ```
 //!

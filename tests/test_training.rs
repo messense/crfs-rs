@@ -31,7 +31,7 @@ fn test_basic_training() {
 
     // Use NamedTempFile for automatic cleanup on panic
     let temp_file = tempfile::NamedTempFile::new().unwrap();
-    let model_path = temp_file.path().to_str().unwrap();
+    let model_path = temp_file.path();
     let result = trainer.train(model_path);
 
     // Check that training completed
@@ -72,7 +72,7 @@ fn test_trainer_validation() {
 
     // Use NamedTempFile for automatic cleanup on panic
     let temp_file = tempfile::NamedTempFile::new().unwrap();
-    let model_path = temp_file.path().to_str().unwrap();
+    let model_path = temp_file.path();
 
     // Should fail without algorithm selection
     let result = trainer.train(model_path);

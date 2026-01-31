@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::{self, Seek, SeekFrom, Write};
+use std::path::Path;
 
 use cqdb::CQDBWriter;
 
@@ -12,7 +13,7 @@ pub struct ModelWriter;
 impl ModelWriter {
     /// Write model to file in CRFsuite format
     pub fn write(
-        filename: &str,
+        filename: &Path,
         fgen: &FeatureGenerator,
         labels: &Dictionary,
         attrs: &Dictionary,

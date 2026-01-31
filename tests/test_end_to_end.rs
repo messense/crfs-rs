@@ -29,7 +29,7 @@ fn test_train_save_load_predict() {
 
     // Use NamedTempFile for automatic cleanup on panic
     let temp_file = tempfile::NamedTempFile::new().unwrap();
-    let model_path = temp_file.path().to_str().unwrap();
+    let model_path = temp_file.path();
     trainer.train(model_path).unwrap();
 
     // Verify model file exists
@@ -118,7 +118,7 @@ fn test_model_persistence() {
 
     // Use NamedTempFile for automatic cleanup on panic
     let temp_file = tempfile::NamedTempFile::new().unwrap();
-    let model_path = temp_file.path().to_str().unwrap();
+    let model_path = temp_file.path();
     trainer.train(model_path).unwrap();
 
     // Load and predict
@@ -153,7 +153,7 @@ fn test_empty_sequence() {
 
     // Use NamedTempFile for automatic cleanup on panic
     let temp_file = tempfile::NamedTempFile::new().unwrap();
-    let model_path = temp_file.path().to_str().unwrap();
+    let model_path = temp_file.path();
     let result = trainer.train(model_path);
 
     // Should handle empty items gracefully
