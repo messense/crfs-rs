@@ -23,6 +23,12 @@ impl Dictionary {
         self.id_to_str.len()
     }
 
+    /// Returns `true` if the dictionary contains no entries
+    #[allow(dead_code)]
+    pub fn is_empty(&self) -> bool {
+        self.id_to_str.is_empty()
+    }
+
     /// Get or create an ID for a string
     /// Returns the ID for the string, creating a new entry if it doesn't exist
     pub fn get_or_insert(&mut self, s: &str) -> u32 {

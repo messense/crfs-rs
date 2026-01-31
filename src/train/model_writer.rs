@@ -166,7 +166,11 @@ impl ModelWriter {
             writer.put(s, id)?;
         }
 
-        // CQDBWriter will automatically close and write the database on drop
+        // CQDBWriter automatically closes and writes the database on drop.
+        // Note: If the drop implementation encounters I/O errors during flush,
+        // they are silently ignored (see CQDB crate's Drop impl). This is a
+        // limitation of the CQDB API which doesn't expose an explicit close()
+        // method that could propagate errors.
         Ok(())
     }
 

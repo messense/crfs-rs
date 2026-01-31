@@ -94,7 +94,8 @@ impl FeatureGenerator {
         // Add state features
         for ((aid, lid), freq) in state_counts {
             if freq >= min_freq {
-                let fid = features.len() as u32;
+                let fid = u32::try_from(features.len())
+                    .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "too many features"))?;
                 features.push(Feature {
                     ftype: FeatureType::State,
                     src: aid,
@@ -108,7 +109,8 @@ impl FeatureGenerator {
         // Add transition features
         for ((prev_lid, lid), freq) in trans_counts {
             if freq >= min_freq {
-                let fid = features.len() as u32;
+                let fid = u32::try_from(features.len())
+                    .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "too many features"))?;
                 features.push(Feature {
                     ftype: FeatureType::Transition,
                     src: prev_lid,
@@ -132,11 +134,20 @@ impl FeatureGenerator {
     }
 
     /// Update feature weights from a weight vector
+    ///
+    /// # Panics
+    ///
+    /// Panics if `weights.len()` does not equal `self.num_features()`.
     pub fn set_weights(&mut self, weights: &[f64]) {
+        assert_eq!(
+            weights.len(),
+            self.features.len(),
+            "weights length ({}) must equal number of features ({})",
+            weights.len(),
+            self.features.len()
+        );
         for (i, feature) in self.features.iter_mut().enumerate() {
-            if i < weights.len() {
-                feature.weight = weights[i];
-            }
+            feature.weight = weights[i];
         }
     }
 }

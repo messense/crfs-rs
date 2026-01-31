@@ -256,19 +256,19 @@ impl CrfContext {
         }
     }
 
-    /// Compute log-likelihood for an instance.
+    /// Compute log-likelihood for an instance using pre-computed scores.
     ///
-    /// This method recomputes the state and transition scores for `inst` by
-    /// calling [`compute_scores`](Self::compute_scores) internally before running the forward
-    /// algorithm. Callers should *not* call `compute_scores` immediately
-    /// before invoking this method, as that would result in redundant
-    /// computation.
-    pub fn log_likelihood(&mut self, inst: &Instance, fgen: &FeatureGenerator) -> f64 {
+    /// This method assumes that [`compute_scores`](Self::compute_scores) has already been
+    /// called and that `forward()` has been run to populate `self.alpha`.
+    /// It computes the score of the correct label sequence and subtracts
+    /// the partition function (log_z) to get the log-likelihood.
+    ///
+    /// # Arguments
+    ///
+    /// * `inst` - The training instance
+    /// * `log_z` - The log partition function from the forward algorithm
+    pub fn log_likelihood(&self, inst: &Instance, log_z: f64) -> f64 {
         let seq_len = inst.num_items as usize;
-        self.compute_scores(inst, fgen);
-
-        // Compute partition function
-        let log_z = self.forward(seq_len);
 
         // Compute score of the correct label sequence
         let mut score = 0.0;

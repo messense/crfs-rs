@@ -311,19 +311,14 @@ impl Trainer {
             for inst in &self.instances {
                 let seq_len = inst.num_items as usize;
 
-                // Compute scores
-                // Note: log_likelihood() below will recompute scores internally.
-                // This is redundant but necessary because forward() needs scores.
-                // A future optimization could split log_likelihood to avoid recomputation.
+                // Compute scores and run forward-backward algorithm
                 ctx.compute_scores(inst, fgen);
-
-                // Forward-backward
                 let log_z = ctx.forward(seq_len);
                 ctx.backward(seq_len);
                 ctx.compute_marginals(seq_len, log_z);
 
-                // Log-likelihood (recomputes scores internally)
-                let log_likelihood = ctx.log_likelihood(inst, fgen);
+                // Compute log-likelihood using pre-computed scores and partition function
+                let log_likelihood = ctx.log_likelihood(inst, log_z);
                 loss -= log_likelihood;
 
                 // Gradient = expected - observed
@@ -365,7 +360,10 @@ impl Trainer {
         };
 
         // Run L-BFGS optimization
-        // Note: num_memories is stored but liblbfgs doesn't expose a way to set it
+        // Note: TrainingParams::num_memories is accepted and stored for API compatibility,
+        // but is currently ignored when configuring the LBFGS optimizer because the
+        // liblbfgs crate does not expose a way to configure the number of limited
+        // memory vectors used by the L-BFGS algorithm. The library uses its default.
         let mut lbfgs = liblbfgs::lbfgs()
             .with_max_iterations(self.params.max_iterations)
             .with_epsilon(self.params.epsilon);
