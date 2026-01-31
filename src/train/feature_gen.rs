@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::io;
 
+use super::dictionary::Dictionary;
 use crate::dataset::Instance;
-use crate::dictionary::Dictionary;
 
 /// Feature type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

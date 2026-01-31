@@ -1,4 +1,5 @@
-use crfs::{Algorithm, Attribute, Model, TaggerAttribute, Trainer};
+use crfs::train::{Algorithm, Attribute, Trainer};
+use crfs::{Model, TaggerAttribute};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("CRF Training and Tagging Example");

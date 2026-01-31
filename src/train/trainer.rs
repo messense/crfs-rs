@@ -1,10 +1,10 @@
 use std::io;
 
-use crate::crf_context::CrfContext;
+use super::crf_context::CrfContext;
+use super::dictionary::Dictionary;
+use super::feature_gen::FeatureGenerator;
+use super::model_writer::ModelWriter;
 use crate::dataset::{Attribute as DatasetAttribute, Instance};
-use crate::dictionary::Dictionary;
-use crate::feature_gen::FeatureGenerator;
-use crate::model_writer::ModelWriter;
 
 /// An attribute with a name and value for training
 #[derive(Debug, Clone, PartialEq)]

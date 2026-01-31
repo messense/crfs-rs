@@ -1,4 +1,4 @@
-use crfs::{Algorithm, Attribute, Trainer};
+use crfs::train::{Algorithm, Attribute, Trainer};
 
 #[test]
 fn test_basic_training() {

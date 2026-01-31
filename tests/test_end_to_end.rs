@@ -1,4 +1,5 @@
-use crfs::{Algorithm, Attribute, Model, TaggerAttribute, Trainer};
+use crfs::train::{Algorithm, Attribute, Trainer};
+use crfs::{Model, TaggerAttribute};
 
 #[test]
 fn test_train_save_load_predict() {

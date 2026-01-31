@@ -3,8 +3,8 @@ use std::io::{self, Seek, SeekFrom, Write};
 
 use cqdb::CQDBWriter;
 
-use crate::dictionary::Dictionary;
-use crate::feature_gen::{FeatureGenerator, FeatureType};
+use super::dictionary::Dictionary;
+use super::feature_gen::FeatureGenerator;
 
 /// Write a trained CRF model to file
 pub struct ModelWriter;
