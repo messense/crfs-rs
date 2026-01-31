@@ -97,6 +97,13 @@ impl Trainer {
             ));
         }
 
+        if xseq.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "empty sequences are not allowed",
+            ));
+        }
+
         let mut instance = Instance::with_capacity(xseq.len());
 
         for (item, label) in xseq.iter().zip(yseq.iter()) {
@@ -440,5 +447,21 @@ mod tests {
 
         assert!(trainer.set("invalid_param", "1.0").is_err());
         assert!(trainer.get("invalid_param").is_err());
+    }
+
+    #[test]
+    fn test_trainer_rejects_empty_sequences() {
+        let mut trainer = Trainer::new(false);
+        assert!(trainer.select(Algorithm::LBFGS).is_ok());
+
+        // Empty sequences should be rejected
+        let xseq: Vec<Vec<Attribute>> = vec![];
+        let yseq: Vec<&str> = vec![];
+
+        let result = trainer.append(&xseq, &yseq);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(err.to_string().contains("empty"));
     }
 }
