@@ -30,6 +30,8 @@ pub enum Algorithm {
     PassiveAggressive,
     /// L2-regularized SGD
     L2SGD,
+    /// Adaptive Regularization (AROW)
+    AROW,
 }
 
 /// Training parameters
@@ -73,6 +75,10 @@ pub struct TrainingParams {
     pub calibration_candidates: usize,
     /// L2SGD: Maximum trials for calibration
     pub calibration_max_trials: usize,
+    /// AROW: Initial variance for covariance matrix
+    pub variance: f64,
+    /// AROW: Trade-off parameter (gamma)
+    pub gamma: f64,
 }
 
 impl Default for TrainingParams {
@@ -97,6 +103,8 @@ impl Default for TrainingParams {
             calibration_samples: 1000,
             calibration_candidates: 10,
             calibration_max_trials: 20,
+            variance: 1.0,
+            gamma: 1.0,
         }
     }
 }
@@ -425,6 +433,30 @@ impl Trainer {
                 }
                 self.params.calibration_max_trials = max_trials;
             }
+            "variance" => {
+                let variance = value.parse().map_err(|_| {
+                    io::Error::new(io::ErrorKind::InvalidInput, "invalid variance value")
+                })?;
+                if variance <= 0.0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "variance must be positive",
+                    ));
+                }
+                self.params.variance = variance;
+            }
+            "gamma" => {
+                let gamma = value.parse().map_err(|_| {
+                    io::Error::new(io::ErrorKind::InvalidInput, "invalid gamma value")
+                })?;
+                if gamma <= 0.0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "gamma must be positive",
+                    ));
+                }
+                self.params.gamma = gamma;
+            }
             _ => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -468,6 +500,8 @@ impl Trainer {
             "calibration.samples" => Ok(self.params.calibration_samples.to_string()),
             "calibration.candidates" => Ok(self.params.calibration_candidates.to_string()),
             "calibration.max_trials" => Ok(self.params.calibration_max_trials.to_string()),
+            "variance" => Ok(self.params.variance.to_string()),
+            "gamma" => Ok(self.params.gamma.to_string()),
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!("unknown parameter: {}", name),
@@ -507,6 +541,7 @@ impl Trainer {
             Algorithm::AveragedPerceptron => self.train_averaged_perceptron(&mut fgen)?,
             Algorithm::PassiveAggressive => self.train_passive_aggressive(&mut fgen)?,
             Algorithm::L2SGD => self.train_l2sgd(&mut fgen)?,
+            Algorithm::AROW => self.train_arow(&mut fgen)?,
         }
 
         // Save model
@@ -789,6 +824,7 @@ impl Trainer {
         counts
     }
 
+    /// Train using Passive Aggressive algorithm
     fn train_passive_aggressive(&mut self, fgen: &mut FeatureGenerator) -> io::Result<()> {
         let num_features = fgen.num_features();
         let num_labels = self.labels.len();
@@ -935,6 +971,120 @@ impl Trainer {
         Ok(())
     }
 
+    /// Train using AROW algorithm
+    fn train_arow(&mut self, fgen: &mut FeatureGenerator) -> io::Result<()> {
+        let num_features = fgen.num_features();
+        let num_labels = self.labels.len();
+        let num_instances = self.instances.len() as f64;
+        let max_items = self
+            .instances
+            .iter()
+            .map(|inst| inst.num_items as usize)
+            .max()
+            .unwrap_or(0);
+
+        // Initialize weights and covariance (diagonal)
+        let mut weights = vec![0.0; num_features];
+        let mut covariance = vec![self.params.variance; num_features];
+        let gamma = self.params.gamma;
+
+        // Create CRF context for Viterbi decoding
+        let mut ctx = CrfContext::new(num_labels, max_items);
+        let mut order: Vec<usize> = (0..self.instances.len()).collect();
+        let mut rng = match self.params.shuffle_seed {
+            Some(seed) => StdRng::seed_from_u64(seed),
+            None => StdRng::from_entropy(),
+        };
+
+        if self.params.verbose {
+            println!(
+                "Training with AROW (variance={}, gamma={})...",
+                self.params.variance, gamma
+            );
+        }
+
+        for epoch in 0..self.params.max_iterations {
+            let mut sum_loss = 0.0;
+
+            if order.len() > 1 {
+                shuffle_indices(&mut order, &mut rng);
+            }
+
+            for &idx in &order {
+                let inst = &self.instances[idx];
+                let seq_len = inst.num_items as usize;
+
+                // Predict with current weights using Viterbi
+                fgen.set_weights(&weights);
+                ctx.compute_scores(inst, fgen);
+                let predicted = ctx.viterbi_decode(seq_len);
+
+                // Compute loss (Hamming distance)
+                let mut num_diff = 0;
+                for t in 0..seq_len {
+                    if predicted[t] != inst.labels[t] {
+                        num_diff += 1;
+                    }
+                }
+
+                if num_diff > 0 {
+                    let pred_score = ctx.sequence_score(&predicted);
+                    let true_score = ctx.sequence_score(&inst.labels);
+                    let cost = pred_score - true_score + num_diff as f64;
+
+                    // Extract feature counts for true and predicted sequences
+                    let true_counts = self.extract_features(inst, &inst.labels, fgen);
+                    let pred_counts = self.extract_features(inst, &predicted, fgen);
+
+                    // Compute feature difference
+                    let mut diff = vec![0.0; num_features];
+                    let mut frac = gamma;
+                    for i in 0..num_features {
+                        let delta = (true_counts[i] - pred_counts[i]) * inst.weight;
+                        diff[i] = delta;
+                        frac += delta * delta * covariance[i];
+                    }
+
+                    // Compute update magnitude.
+                    let alpha = cost / frac;
+
+                    // Update weights and covariance (diagonal approximation).
+                    for i in 0..num_features {
+                        let sigma = covariance[i];
+                        let delta = diff[i];
+                        weights[i] += alpha * sigma * delta;
+                        covariance[i] = 1.0 / ((1.0 / sigma) + (delta * delta) / gamma);
+                    }
+
+                    sum_loss += cost * inst.weight;
+                }
+            }
+
+            if self.params.verbose {
+                let feature_norm: f64 = weights.iter().map(|w| w * w).sum::<f64>().sqrt();
+                println!(
+                    "Epoch {}: loss = {:.6}, feature_norm = {:.6}",
+                    epoch + 1,
+                    sum_loss,
+                    feature_norm
+                );
+            }
+
+            if num_instances > 0.0 && sum_loss / num_instances <= self.params.epsilon {
+                if self.params.verbose {
+                    println!("Converged at epoch {}", epoch + 1);
+                }
+                break;
+            }
+        }
+
+        // Update feature weights
+        fgen.set_weights(&weights);
+
+        Ok(())
+    }
+
+    /// Train using L2SGD algorithm
     fn train_l2sgd(&mut self, fgen: &mut FeatureGenerator) -> io::Result<()> {
         use rand::SeedableRng;
         use rand::seq::SliceRandom;
