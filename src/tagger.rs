@@ -118,7 +118,10 @@ impl<'a> Tagger<'a> {
                 // Transition feature from #i to #(feature.target)
                 let fid = edge.get(r as usize)?;
                 let feature = self.model.feature(fid)?;
-                trans[feature.target as usize] = feature.weight;
+                let j = feature.target as usize;
+                trans[j] = feature.weight;
+                // Also update transposed matrix for cache-friendly Viterbi
+                self.context.trans_t[l * j + i] = feature.weight;
             }
         }
         Ok(())

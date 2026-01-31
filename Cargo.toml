@@ -14,7 +14,7 @@ name = "crf_bench"
 harness = false
 
 [dependencies]
-bitflags = "1.2.1"
+bitflags = "2.10.0"
 bstr = "1.0.0"
 cqdb = "0.5"
 
