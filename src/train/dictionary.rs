@@ -23,11 +23,6 @@ impl Dictionary {
         self.id_to_str.len()
     }
 
-    /// Check if the dictionary is empty
-    pub fn is_empty(&self) -> bool {
-        self.id_to_str.is_empty()
-    }
-
     /// Get or create an ID for a string
     /// Returns the ID for the string, creating a new entry if it doesn't exist
     pub fn get_or_insert(&mut self, s: &str) -> u32 {
@@ -39,16 +34,6 @@ impl Dictionary {
             self.id_to_str.push(s.to_string());
             id
         }
-    }
-
-    /// Get the ID for a string, if it exists
-    pub fn get(&self, s: &str) -> Option<u32> {
-        self.str_to_id.get(s).copied()
-    }
-
-    /// Get the string for an ID, if it exists
-    pub fn get_str(&self, id: u32) -> Option<&str> {
-        self.id_to_str.get(id as usize).map(|s| s.as_str())
     }
 
     /// Clear all entries
@@ -63,11 +48,6 @@ impl Dictionary {
             .iter()
             .enumerate()
             .map(|(id, s)| (s.as_str(), id as u32))
-    }
-
-    /// Get all strings in order
-    pub fn strings(&self) -> &[String] {
-        &self.id_to_str
     }
 }
 
@@ -85,7 +65,6 @@ mod tests {
     fn test_dictionary_basic() {
         let mut dict = Dictionary::new();
         assert_eq!(dict.len(), 0);
-        assert!(dict.is_empty());
 
         let id1 = dict.get_or_insert("hello");
         assert_eq!(id1, 0);
@@ -99,16 +78,6 @@ mod tests {
         let id3 = dict.get_or_insert("hello");
         assert_eq!(id3, id1);
         assert_eq!(dict.len(), 2);
-
-        // Test get
-        assert_eq!(dict.get("hello"), Some(0));
-        assert_eq!(dict.get("world"), Some(1));
-        assert_eq!(dict.get("foo"), None);
-
-        // Test get_str
-        assert_eq!(dict.get_str(0), Some("hello"));
-        assert_eq!(dict.get_str(1), Some("world"));
-        assert_eq!(dict.get_str(2), None);
     }
 
     #[test]
@@ -120,7 +89,6 @@ mod tests {
 
         dict.clear();
         assert_eq!(dict.len(), 0);
-        assert!(dict.is_empty());
     }
 
     #[test]

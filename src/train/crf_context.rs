@@ -5,8 +5,6 @@ use crate::dataset::Instance;
 pub struct CrfContext {
     /// Number of labels
     num_labels: usize,
-    /// Maximum sequence length
-    max_items: usize,
     /// State scores [time][label]
     state_scores: Vec<Vec<f64>>,
     /// Transition scores [prev_label][label]
@@ -28,7 +26,6 @@ impl CrfContext {
     pub fn new(num_labels: usize, max_items: usize) -> Self {
         Self {
             num_labels,
-            max_items,
             state_scores: vec![vec![0.0; num_labels]; max_items],
             trans_scores: vec![vec![0.0; num_labels]; num_labels],
             alpha: vec![vec![f64::NEG_INFINITY; num_labels]; max_items],
@@ -173,13 +170,6 @@ impl CrfContext {
         }
     }
 
-    /// Compute expected feature counts (from marginals)
-    pub fn expected_counts(&self, inst: &Instance, fgen: &FeatureGenerator) -> Vec<f64> {
-        let mut counts = vec![0.0; fgen.num_features()];
-        self.expected_counts_into(inst, fgen, &mut counts);
-        counts
-    }
-
     /// Compute expected feature counts into a pre-allocated vector
     pub fn expected_counts_into(
         &self,
@@ -219,13 +209,6 @@ impl CrfContext {
                 }
             }
         }
-    }
-
-    /// Compute observed feature counts (from labels)
-    pub fn observed_counts(&self, inst: &Instance, fgen: &FeatureGenerator) -> Vec<f64> {
-        let mut counts = vec![0.0; fgen.num_features()];
-        self.observed_counts_into(inst, fgen, &mut counts);
-        counts
     }
 
     /// Compute observed feature counts into a pre-allocated vector

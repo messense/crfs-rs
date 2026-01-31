@@ -93,6 +93,7 @@ impl ModelWriter {
     }
 
     /// Write header with actual offsets
+    #[allow(clippy::too_many_arguments)]
     fn write_header_with_offsets(
         file: &mut File,
         fgen: &FeatureGenerator,

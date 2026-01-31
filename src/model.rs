@@ -55,25 +55,6 @@ struct Header {
     off_attr_refs: u32,
 }
 
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
-#[repr(C)]
-struct FeatureRefHeader {
-    chunk: [u8; 4],
-    size: u32,
-    num: u32,
-    offsets: [u32; 1],
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
-#[repr(C)]
-struct FeatureHeader {
-    chunk: [u8; 4],
-    size: u32,
-    num: u32,
-}
-
 /// The CRF model
 #[derive(Clone)]
 pub struct Model<'a> {

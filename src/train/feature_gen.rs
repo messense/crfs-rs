@@ -24,8 +24,6 @@ pub struct Feature {
     pub dst: u32,
     /// Feature weight
     pub weight: f64,
-    /// Feature frequency in training data
-    pub freq: f64,
 }
 
 /// Feature references for fast lookup
@@ -37,10 +35,6 @@ pub struct FeatureRefs {
 
 /// Feature generator for CRF training
 pub struct FeatureGenerator {
-    /// Number of labels
-    pub num_labels: usize,
-    /// Number of attributes
-    pub num_attrs: usize,
     /// All features
     pub features: Vec<Feature>,
     /// Feature references by attribute ID
@@ -106,7 +100,6 @@ impl FeatureGenerator {
                     src: aid,
                     dst: lid,
                     weight: 0.0,
-                    freq,
                 });
                 attr_refs[aid as usize].fids.push(fid);
             }
@@ -121,15 +114,12 @@ impl FeatureGenerator {
                     src: prev_lid,
                     dst: lid,
                     weight: 0.0,
-                    freq,
                 });
                 label_refs[prev_lid as usize].fids.push(fid);
             }
         }
 
         Ok(Self {
-            num_labels,
-            num_attrs,
             features,
             attr_refs,
             label_refs,
@@ -148,11 +138,6 @@ impl FeatureGenerator {
                 feature.weight = weights[i];
             }
         }
-    }
-
-    /// Get feature weights as a vector
-    pub fn get_weights(&self) -> Vec<f64> {
-        self.features.iter().map(|f| f.weight).collect()
     }
 }
 
@@ -181,8 +166,6 @@ mod tests {
 
         // Should have state features and transition features
         assert!(fgen.num_features() > 0);
-        assert_eq!(fgen.num_labels, 2);
-        assert_eq!(fgen.num_attrs, 2);
 
         // Check that we have both state and transition features
         let has_state = fgen.features.iter().any(|f| f.ftype == FeatureType::State);

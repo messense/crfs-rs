@@ -377,7 +377,7 @@ impl Trainer {
 
         let result = lbfgs
             .minimize(&mut weights, evaluate, progress)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("LBFGS error: {}", e)))?;
+            .map_err(|e| io::Error::other(format!("LBFGS error: {}", e)))?;
 
         if self.params.verbose {
             println!("Final loss: {:.6}", result.fx);
