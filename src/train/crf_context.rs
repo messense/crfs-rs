@@ -256,6 +256,71 @@ impl CrfContext {
         }
     }
 
+    /// Viterbi decoding to find the best label sequence.
+    ///
+    /// This method assumes that [`compute_scores`](Self::compute_scores) has already been
+    /// called. It uses dynamic programming to find the label sequence with maximum score.
+    ///
+    /// # Arguments
+    ///
+    /// * `seq_len` - The length of the sequence
+    ///
+    /// # Returns
+    ///
+    /// A vector of label IDs representing the best label sequence
+    pub fn viterbi_decode(&self, seq_len: usize) -> Vec<u32> {
+        let mut delta = vec![vec![f64::NEG_INFINITY; self.num_labels]; seq_len];
+        let mut psi = vec![vec![0usize; self.num_labels]; seq_len];
+
+        // Initialization: delta[0][l] = state_score[0][l]
+        for l in 0..self.num_labels {
+            delta[0][l] = self.state_scores[0][l];
+        }
+
+        // Forward pass: find best previous state for each current state
+        for t in 1..seq_len {
+            for l in 0..self.num_labels {
+                let mut best_score = f64::NEG_INFINITY;
+                let mut best_prev = 0;
+
+                for prev_l in 0..self.num_labels {
+                    let score = delta[t - 1][prev_l]
+                        + self.trans_scores[prev_l][l]
+                        + self.state_scores[t][l];
+
+                    if score > best_score {
+                        best_score = score;
+                        best_prev = prev_l;
+                    }
+                }
+
+                delta[t][l] = best_score;
+                psi[t][l] = best_prev;
+            }
+        }
+
+        // Backtrack: find the best path
+        let mut labels = vec![0u32; seq_len];
+
+        // Find the best final state
+        let mut best_final_score = f64::NEG_INFINITY;
+        let mut best_final_label = 0;
+        for l in 0..self.num_labels {
+            if delta[seq_len - 1][l] > best_final_score {
+                best_final_score = delta[seq_len - 1][l];
+                best_final_label = l;
+            }
+        }
+        labels[seq_len - 1] = best_final_label as u32;
+
+        // Backtrack through the sequence
+        for t in (0..seq_len - 1).rev() {
+            labels[t] = psi[t + 1][labels[t + 1] as usize] as u32;
+        }
+
+        labels
+    }
+
     /// Compute log-likelihood for an instance using pre-computed scores.
     ///
     /// This method assumes that [`compute_scores`](Self::compute_scores) has already been
