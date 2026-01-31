@@ -215,9 +215,9 @@ impl Context {
         let prev = &self.alpha_score[L * (self.num_items as usize - 1)..];
         let mut labels = vec![0u32; self.num_items as usize];
 
-        for i in 0..L {
-            if max_score < prev[i] {
-                max_score = prev[i];
+        for (i, prev_value) in prev.iter().enumerate().take(L) {
+            if max_score < *prev_value {
+                max_score = *prev_value;
                 labels[self.num_items as usize - 1] = i as u32;
             }
         }
@@ -302,9 +302,9 @@ impl Context {
         let prev = &self.alpha_score[L * (self.num_items as usize - 1)..];
         let mut labels = vec![0u32; self.num_items as usize];
 
-        for i in 0..L {
-            if max_score < prev[i] {
-                max_score = prev[i];
+        for (i, prev_value) in prev.iter().enumerate().take(L) {
+            if max_score < *prev_value {
+                max_score = *prev_value;
                 labels[self.num_items as usize - 1] = i as u32;
             }
         }

@@ -19,12 +19,6 @@ pub struct Instance {
     pub items: Vec<Item>,
     /// Array of the label sequence
     pub labels: Vec<u32>,
-    /// Instance weight
-    #[allow(dead_code)]
-    pub weight: f64,
-    /// Group ID of the instance
-    #[allow(dead_code)]
-    pub group: u32,
 }
 
 impl Attribute {
@@ -39,8 +33,6 @@ impl Instance {
             num_items: 0,
             items: Vec::with_capacity(cap),
             labels: Vec::with_capacity(cap),
-            weight: 1.0,
-            group: 0,
         }
     }
 

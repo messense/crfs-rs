@@ -101,7 +101,7 @@ impl PyModel {
 }
 
 #[pymodule]
-fn crfs(_py: Python, m: &PyModule) -> PyResult<()> {
+fn crfs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_class::<PyAttribute>()?;
     m.add_class::<PyModel>()?;
