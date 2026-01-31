@@ -54,7 +54,7 @@ fn test_train_save_load_predict() {
     assert!(model.to_attr_id("clean").is_some());
 
     // Create tagger
-    let mut tagger = model.tagger().unwrap();
+    let tagger = model.tagger().unwrap();
 
     // Test prediction on new data
     let test_seq = vec![
@@ -153,7 +153,7 @@ fn test_model_persistence() {
     // Load and predict
     let model_data = std::fs::read(temp_file.path()).unwrap();
     let model = Model::new(&model_data).unwrap();
-    let mut tagger = model.tagger().unwrap();
+    let tagger = model.tagger().unwrap();
 
     let test_seq = vec![
         vec![Attribute::new("a", 1.0)],

@@ -33,7 +33,7 @@
 //!
 //! let model_data = std::fs::read("model.crfsuite")?;
 //! let model = Model::new(&model_data)?;
-//! let mut tagger = model.tagger()?;
+//! let tagger = model.tagger()?;
 //!
 //! let xseq = vec![
 //!     vec![Attribute::new("walk", 1.0)],

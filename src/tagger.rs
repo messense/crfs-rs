@@ -1,15 +1,9 @@
 use std::io;
 
 use crate::attribute::Attribute;
-use crate::context::{Context, Flag, Reset};
+use crate::context::{Context, Flag, Reset, ViterbiState};
 use crate::dataset::{self, Instance, Item};
 use crate::model::Model;
-
-#[derive(Debug, Clone, Copy)]
-enum Level {
-    None,
-    Set,
-}
 
 /// The tagger provides the functionality for predicting label sequences for input sequences using a model
 #[derive(Debug, Clone)]
@@ -20,7 +14,6 @@ pub struct Tagger<'a> {
     context: Context,
     /// Number of distinct output labels
     num_labels: u32,
-    level: Level,
 }
 
 impl<'a> Tagger<'a> {
@@ -32,38 +25,19 @@ impl<'a> Tagger<'a> {
             model,
             context,
             num_labels,
-            level: Level::None,
         };
         tagger.transition_score()?;
         tagger.context.exp_transition();
         Ok(tagger)
     }
 
-    pub fn len(&self) -> usize {
-        self.context.num_items as usize
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.context.num_items == 0
-    }
-
     /// Predict the label sequence for the item sequence.
-    pub fn tag<T: AsRef<[Attribute]>>(&mut self, xseq: &[T]) -> io::Result<Vec<&str>> {
+    pub fn tag<T: AsRef<[Attribute]>>(&self, xseq: &[T]) -> io::Result<Vec<&str>> {
         if xseq.is_empty() {
             return Ok(Vec::new());
         }
-        self.set(xseq)?;
-        let (label_ids, _score) = self.viterbi();
-        let mut labels = Vec::with_capacity(label_ids.len());
-        for id in label_ids {
-            let label = self.model.to_label(id).unwrap();
-            labels.push(label);
-        }
-        Ok(labels)
-    }
 
-    /// Set an instance (item sequence) for future calls of `tag`, `probability` and `marginal` methods
-    pub fn set<T: AsRef<[Attribute]>>(&mut self, xseq: &[T]) -> io::Result<()> {
+        // Build instance from input sequence
         let mut instance = Instance::with_capacity(xseq.len());
         for item in xseq {
             let item: Item = item
@@ -77,11 +51,20 @@ impl<'a> Tagger<'a> {
                 .collect();
             instance.push(item, 0);
         }
-        self.context.set_num_items(instance.num_items);
-        self.context.reset(Reset::STATE);
-        self.state_score(&instance)?;
-        self.level = Level::Set;
-        Ok(())
+
+        // Create ViterbiState and compute state scores into it
+        let mut vstate = ViterbiState::new(self.num_labels, instance.num_items);
+        self.state_score(&instance, &mut vstate)?;
+
+        // Run Viterbi
+        let (label_ids, _score) = self.context.viterbi(&mut vstate);
+
+        let mut labels = Vec::with_capacity(label_ids.len());
+        for id in label_ids {
+            let label = self.model.to_label(id).unwrap();
+            labels.push(label);
+        }
+        Ok(labels)
     }
 
     fn transition_score(&mut self) -> io::Result<()> {
@@ -103,11 +86,13 @@ impl<'a> Tagger<'a> {
         Ok(())
     }
 
-    fn state_score(&mut self, instance: &Instance) -> io::Result<()> {
+    /// Compute state scores into ViterbiState.state
+    fn state_score(&self, instance: &Instance, vstate: &mut ViterbiState) -> io::Result<()> {
+        let l = self.num_labels as usize;
         // Loop over the items in the sequence
         for t in 0..instance.num_items as usize {
             let item = &instance.items[t];
-            let state = &mut self.context.state[self.context.num_labels as usize * t..];
+            let state_slice = &mut vstate.state[l * t..];
             // Loop over the attributes attached to the item
             for attr in item {
                 // Access the list of state features associated with the attribute
@@ -115,18 +100,14 @@ impl<'a> Tagger<'a> {
                 let attr_ref = self.model.attr_ref(id)?;
                 // A scale usually represents the attribute frequency in the item
                 let value = attr.value;
-                // Loop over the state features associated with the attribue
+                // Loop over the state features associated with the attribute
                 for r in 0..attr_ref.num_features as usize {
                     let fid = attr_ref.get(r)?;
                     let feature = self.model.feature(fid)?;
-                    state[feature.target as usize] += feature.weight * value;
+                    state_slice[feature.target as usize] += feature.weight * value;
                 }
             }
         }
         Ok(())
-    }
-
-    fn viterbi(&mut self) -> (Vec<u32>, f64) {
-        self.context.viterbi()
     }
 }

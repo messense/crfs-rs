@@ -381,7 +381,7 @@ STATE_FEATURES = {
 
         let buf = fs::read("tests/model.crfsuite").unwrap();
         let model = Model::new(&buf).unwrap();
-        let mut tagger = model.tagger().unwrap();
+        let tagger = model.tagger().unwrap();
         let xseq = vec![
             vec![Attribute::new("walk", 1.0), Attribute::new("shop", 0.5)],
             vec![Attribute::new("walk", 1.0)],
@@ -399,7 +399,7 @@ STATE_FEATURES = {
         let res = tagger.tag(&xseq).unwrap();
         assert_eq!(res, yseq);
 
-        let mut tagger = model.tagger().unwrap();
+        let tagger = model.tagger().unwrap();
         let res = tagger.tag::<[Attribute; 0]>(&[]).unwrap();
         assert!(res.is_empty());
     }
