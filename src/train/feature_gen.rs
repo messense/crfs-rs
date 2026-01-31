@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::io;
 
 use super::dictionary::Dictionary;
@@ -59,8 +59,8 @@ impl FeatureGenerator {
         let num_attrs = attrs.len();
 
         // Count feature occurrences
-        let mut state_counts: HashMap<(u32, u32), f64> = HashMap::new();
-        let mut trans_counts: HashMap<(u32, u32), f64> = HashMap::new();
+        let mut state_counts: BTreeMap<(u32, u32, u32), f64> = BTreeMap::new();
+        let mut trans_counts: BTreeMap<(u32, u32, u32), f64> = BTreeMap::new();
 
         for inst in instances {
             let seq_len = inst.num_items as usize;
@@ -72,7 +72,7 @@ impl FeatureGenerator {
             for t in 0..seq_len {
                 let label = inst.labels[t];
                 for attr in &inst.items[t] {
-                    let key = (attr.id, label);
+                    let key = (FeatureType::State as u32, attr.id, label);
                     *state_counts.entry(key).or_insert(0.0) += attr.value;
                 }
             }
@@ -81,7 +81,7 @@ impl FeatureGenerator {
             for t in 1..seq_len {
                 let prev_label = inst.labels[t - 1];
                 let label = inst.labels[t];
-                let key = (prev_label, label);
+                let key = (FeatureType::Transition as u32, prev_label, label);
                 *trans_counts.entry(key).or_insert(0.0) += 1.0;
             }
         }
@@ -92,7 +92,7 @@ impl FeatureGenerator {
         let mut label_refs = vec![FeatureRefs::default(); num_labels];
 
         // Add state features
-        for ((aid, lid), freq) in state_counts {
+        for ((_, aid, lid), freq) in state_counts {
             if freq >= min_freq {
                 let fid = u32::try_from(features.len())
                     .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "too many features"))?;
@@ -107,7 +107,7 @@ impl FeatureGenerator {
         }
 
         // Add transition features
-        for ((prev_lid, lid), freq) in trans_counts {
+        for ((_, prev_lid, lid), freq) in trans_counts {
             if freq >= min_freq {
                 let fid = u32::try_from(features.len())
                     .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "too many features"))?;

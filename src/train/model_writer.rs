@@ -43,10 +43,12 @@ impl ModelWriter {
         Self::write_cqdb(&mut file, attrs)?;
 
         // Write label feature references
+        Self::align_to_u32(&mut file)?;
         let off_label_refs = pos_to_u32(file.stream_position()?)?;
         Self::write_label_refs(&mut file, fgen)?;
 
         // Write attribute feature references
+        Self::align_to_u32(&mut file)?;
         let off_attr_refs = pos_to_u32(file.stream_position()?)?;
         Self::write_attr_refs(&mut file, fgen)?;
 
@@ -121,6 +123,16 @@ impl ModelWriter {
         Ok(())
     }
 
+    /// Align the file position to a 4-byte boundary with zero padding.
+    fn align_to_u32(file: &mut File) -> io::Result<()> {
+        let mut pos = file.stream_position()?;
+        while pos % 4 != 0 {
+            file.write_all(&[0])?;
+            pos += 1;
+        }
+        Ok(())
+    }
+
     /// Write features section
     fn write_features(file: &mut File, fgen: &FeatureGenerator) -> io::Result<()> {
         // Write chunk header
@@ -177,6 +189,9 @@ impl ModelWriter {
     /// Write label feature references
     fn write_label_refs(file: &mut File, fgen: &FeatureGenerator) -> io::Result<()> {
         let num_labels = fgen.label_refs.len();
+        let total_labels = num_labels
+            .checked_add(2)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "label count overflow"))?;
         let chunk_start = u32::try_from(file.stream_position()?).map_err(|_| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -185,8 +200,8 @@ impl ModelWriter {
         })?;
 
         // Write chunk header with checked arithmetic
-        file.write_all(b"LREF")?; // chunk ID
-        let num_labels_u32 = u32::try_from(num_labels).map_err(|_| {
+        file.write_all(b"LFRF")?; // chunk ID
+        let num_labels_u32 = u32::try_from(total_labels).map_err(|_| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
                 "number of labels exceeds u32::MAX",
@@ -205,10 +220,10 @@ impl ModelWriter {
 
         // Calculate offsets for each label's feature list (absolute offsets)
         let mut current_offset = chunk_start + header_size_u32;
-        let mut offsets = Vec::new();
+        let mut offsets = vec![0u32; total_labels];
 
-        for label_ref in &fgen.label_refs {
-            offsets.push(current_offset);
+        for (index, label_ref) in fgen.label_refs.iter().enumerate() {
+            offsets[index] = current_offset;
             // Use checked arithmetic for offset calculation
             let fids_len_u32 = u32::try_from(label_ref.fids.len()).map_err(|_| {
                 io::Error::new(
@@ -270,7 +285,7 @@ impl ModelWriter {
         })?;
 
         // Write chunk header with checked arithmetic
-        file.write_all(b"AREF")?; // chunk ID
+        file.write_all(b"AFRF")?; // chunk ID
         let num_attrs_u32 = u32::try_from(num_attrs).map_err(|_| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
