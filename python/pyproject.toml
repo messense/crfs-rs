@@ -4,3 +4,4 @@ build-backend = "maturin"
 
 [project]
 name = "crfs"
+dynamic = ["version", "readme", "urls"]
