@@ -1,8 +1,8 @@
 use std::io;
 use std::path::Path;
 
-use rand::Rng;
 use rand::rngs::StdRng;
+use rand::seq::SliceRandom;
 
 use super::dictionary::Dictionary;
 use super::feature_gen::FeatureGenerator;
@@ -23,11 +23,7 @@ pub use self::lbfgs::LbfgsParams;
 pub use self::passive_aggressive::{PaType, PassiveAggressiveParams};
 
 fn shuffle_indices(indices: &mut [usize], rng: &mut StdRng) {
-    let len = indices.len();
-    for i in 0..len {
-        let j = rng.gen_range(0..len);
-        indices.swap(i, j);
-    }
+    indices.shuffle(rng);
 }
 
 /// Training algorithm marker for L-BFGS.
