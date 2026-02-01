@@ -48,6 +48,11 @@ impl Dictionary {
         self.id_to_str.clear();
     }
 
+    /// Get the string for a given ID
+    pub fn get_name(&self, id: u32) -> Option<&str> {
+        self.id_to_str.get(id as usize).map(|s| s.as_str())
+    }
+
     /// Iterate over all (string, id) pairs
     pub fn iter(&self) -> impl Iterator<Item = (&str, u32)> + '_ {
         self.id_to_str
