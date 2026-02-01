@@ -54,13 +54,19 @@ impl PrunedModel {
             }
         }
 
-        // Step 3: Remap feature src IDs for state features (attr IDs changed)
+        // Step 3: Remap feature src IDs for state features only
+        // State features: src = attribute ID (needs remapping)
+        // Transition features: src = previous label ID (no remapping needed)
         for feature in &mut pruned_features {
             if feature.ftype == FeatureType::State {
-                if let Some(new_aid) = amap[feature.src as usize] {
-                    feature.src = new_aid;
+                let old_aid = feature.src as usize;
+                if old_aid < amap.len() {
+                    if let Some(new_aid) = amap[old_aid] {
+                        feature.src = new_aid;
+                    }
                 }
             }
+            // Transition features keep their src (prev_label ID) unchanged
         }
 
         // Step 4: Build pruned attr_refs with remapped feature IDs
