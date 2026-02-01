@@ -13,5 +13,4 @@ mod trainer;
 pub use self::trainer::{
     Arow, ArowParams, AveragedPerceptron, AveragedPerceptronParams, L2Sgd, L2SgdParams, Lbfgs,
     LbfgsParams, LineSearchAlgorithm, PaType, PassiveAggressive, PassiveAggressiveParams, Trainer,
-    TrainingAlgorithm,
 };

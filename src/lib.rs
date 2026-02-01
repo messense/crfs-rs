@@ -59,4 +59,4 @@ pub use self::model::Model;
 pub use self::tagger::Tagger;
 
 // Re-export training types for convenience
-pub use self::train::{Trainer, TrainingAlgorithm};
+pub use self::train::Trainer;
