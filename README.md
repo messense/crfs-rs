@@ -21,15 +21,15 @@ crfs = "0.2"
 
 ## Performance
 
-Performance comparsion with CRFsuite on MacBook Pro (13-inch, M1, 2020) 16GB
+Performance comparsion with CRFsuite on MacBook Pro (13-inch, M4 MAX, 2024)
 
 ```bash
 $ cargo bench --bench crf_bench -- --output-format bencher
-test tag/crfs ... bench:        1449 ns/iter (+/- 5)
-test tag/crfsuite ... bench:        2154 ns/iter (+/- 14)
+test tag/crfs ... bench:         579 ns/iter (+/- 15)
+test tag/crfsuite ... bench:        1185 ns/iter (+/- 20)
 ```
 
-Last updated on 2021-11-18.
+Last updated on 2026-02-01.
 
 ## License
 
