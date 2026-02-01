@@ -241,6 +241,7 @@ impl Trainer<Lbfgs> {
             // Compute loss and gradient for each instance
             for inst in &self.instances {
                 let seq_len = inst.num_items as usize;
+                let inst_weight = inst.weight;
 
                 // Compute scores and run forward-backward algorithm
                 ctx.compute_scores(inst, fgen);
@@ -250,16 +251,16 @@ impl Trainer<Lbfgs> {
 
                 // Compute log-likelihood using pre-computed scores and partition function
                 let log_likelihood = ctx.log_likelihood(inst, log_z);
-                loss -= log_likelihood;
+                loss -= log_likelihood * inst_weight;
 
-                // Gradient = expected - observed
+                // Gradient = expected - observed, weighted by instance weight
                 // Reuse pre-allocated vectors
                 expected.fill(0.0);
                 observed.fill(0.0);
                 ctx.expected_counts_into(inst, fgen, &mut expected);
                 ctx.observed_counts_into(inst, fgen, &mut observed);
                 for i in 0..num_features {
-                    gradient[i] += expected[i] - observed[i];
+                    gradient[i] += (expected[i] - observed[i]) * inst_weight;
                 }
             }
 
