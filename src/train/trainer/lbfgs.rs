@@ -139,15 +139,12 @@ impl LbfgsParams {
         self.period
     }
 
-    pub fn set_period(&mut self, period: usize) -> io::Result<()> {
-        if period == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "period must be positive",
-            ));
-        }
+    /// Set the period for delta-based convergence test.
+    ///
+    /// Setting period to 0 disables the delta-based convergence test
+    /// (only gradient-based epsilon test is used).
+    pub fn set_period(&mut self, period: usize) {
         self.period = period;
-        Ok(())
     }
 
     pub fn delta(&self) -> f64 {
@@ -300,12 +297,17 @@ impl Trainer<Lbfgs> {
             .with_max_iterations(max_iterations)
             .with_epsilon(epsilon)
             .with_fx_delta(delta, period)
-            .with_linesearch_algorithm(linesearch.to_liblbfgs_str())
             .with_max_linesearch(max_linesearch);
 
-        // Add L1 regularization if c1 > 0
+        // Add L1 regularization if c1 > 0 (OWL-QN)
+        // OWL-QN only supports backtracking line search, so we force it here
+        // regardless of the configured linesearch algorithm (matching CRFsuite behavior).
         if c1 > 0.0 {
-            lbfgs = lbfgs.with_orthantwise(c1, 0, num_features);
+            lbfgs = lbfgs
+                .with_linesearch_algorithm("BacktrackingStrongWolfe")
+                .with_orthantwise(c1, 0, num_features);
+        } else {
+            lbfgs = lbfgs.with_linesearch_algorithm(linesearch.to_liblbfgs_str());
         }
 
         let result = lbfgs
