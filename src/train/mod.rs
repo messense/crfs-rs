@@ -12,5 +12,6 @@ mod trainer;
 // Re-export public types
 pub use self::trainer::{
     Arow, ArowParams, AveragedPerceptron, AveragedPerceptronParams, L2Sgd, L2SgdParams, Lbfgs,
-    LbfgsParams, PaType, PassiveAggressive, PassiveAggressiveParams, Trainer, TrainingAlgorithm,
+    LbfgsParams, LineSearchAlgorithm, PaType, PassiveAggressive, PassiveAggressiveParams, Trainer,
+    TrainingAlgorithm,
 };

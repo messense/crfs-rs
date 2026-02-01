@@ -5,19 +5,121 @@ use std::path::Path;
 use cqdb::CQDBWriter;
 
 use super::dictionary::Dictionary;
-use super::feature_gen::FeatureGenerator;
+use super::feature_gen::{Feature, FeatureGenerator, FeatureRefs, FeatureType};
+
+/// Pruned model data for serialization
+struct PrunedModel {
+    /// Pruned features (non-zero weights only)
+    features: Vec<Feature>,
+    /// Pruned attribute refs (remapped feature IDs)
+    attr_refs: Vec<FeatureRefs>,
+    /// Pruned label refs (remapped feature IDs)
+    label_refs: Vec<FeatureRefs>,
+    /// Pruned attribute dictionary (only attrs with surviving features)
+    attrs: Dictionary,
+}
+
+impl PrunedModel {
+    /// Create a pruned model from a feature generator
+    fn from_fgen(fgen: &FeatureGenerator, attrs: &Dictionary, labels: &Dictionary) -> Self {
+        let num_labels = labels.len();
+
+        // Step 1: Build feature map (old_fid -> new_fid) for non-zero features
+        let mut fmap: Vec<Option<u32>> = vec![None; fgen.features.len()];
+        let mut pruned_features = Vec::new();
+
+        for (old_fid, feature) in fgen.features.iter().enumerate() {
+            if feature.weight != 0.0 {
+                let new_fid = pruned_features.len() as u32;
+                fmap[old_fid] = Some(new_fid);
+                pruned_features.push(feature.clone());
+            }
+        }
+
+        // Step 2: Build attribute map (old_aid -> new_aid) for attrs with surviving state features
+        let mut amap: Vec<Option<u32>> = vec![None; attrs.len()];
+        let mut pruned_attrs = Dictionary::new();
+
+        for (old_aid, attr_ref) in fgen.attr_refs.iter().enumerate() {
+            let has_surviving_feature = attr_ref
+                .fids
+                .iter()
+                .any(|&fid| fmap[fid as usize].is_some());
+
+            if has_surviving_feature {
+                if let Some(name) = attrs.get_name(old_aid as u32) {
+                    let new_aid = pruned_attrs.get_or_insert(name);
+                    amap[old_aid] = Some(new_aid);
+                }
+            }
+        }
+
+        // Step 3: Remap feature src IDs for state features (attr IDs changed)
+        for feature in &mut pruned_features {
+            if feature.ftype == FeatureType::State {
+                if let Some(new_aid) = amap[feature.src as usize] {
+                    feature.src = new_aid;
+                }
+            }
+        }
+
+        // Step 4: Build pruned attr_refs with remapped feature IDs
+        let mut pruned_attr_refs = vec![FeatureRefs::default(); pruned_attrs.len()];
+        for (old_aid, attr_ref) in fgen.attr_refs.iter().enumerate() {
+            if let Some(new_aid) = amap[old_aid] {
+                let new_ref = &mut pruned_attr_refs[new_aid as usize];
+                for &old_fid in &attr_ref.fids {
+                    if let Some(new_fid) = fmap[old_fid as usize] {
+                        new_ref.fids.push(new_fid);
+                    }
+                }
+            }
+        }
+
+        // Step 5: Build pruned label_refs with remapped feature IDs
+        let mut pruned_label_refs = vec![FeatureRefs::default(); num_labels];
+        for (label_id, label_ref) in fgen.label_refs.iter().enumerate() {
+            if label_id < num_labels {
+                let new_ref = &mut pruned_label_refs[label_id];
+                for &old_fid in &label_ref.fids {
+                    if let Some(new_fid) = fmap[old_fid as usize] {
+                        new_ref.fids.push(new_fid);
+                    }
+                }
+            }
+        }
+
+        Self {
+            features: pruned_features,
+            attr_refs: pruned_attr_refs,
+            label_refs: pruned_label_refs,
+            attrs: pruned_attrs,
+        }
+    }
+
+    fn num_features(&self) -> usize {
+        self.features.len()
+    }
+}
 
 /// Write a trained CRF model to file
 pub struct ModelWriter;
 
 impl ModelWriter {
     /// Write model to file in CRFsuite format
+    ///
+    /// This method prunes zero-weight features and unused attributes before
+    /// writing, resulting in smaller model files. This matches CRFsuite's
+    /// default behavior.
     pub fn write(
         filename: &Path,
         fgen: &FeatureGenerator,
         labels: &Dictionary,
         attrs: &Dictionary,
     ) -> io::Result<()> {
+        // Prune zero-weight features and unused attributes
+        let pruned = PrunedModel::from_fgen(fgen, attrs, labels);
+
         let mut file = File::create(filename)?;
 
         // Helper to convert stream position to u32 with overflow check
@@ -28,38 +130,37 @@ impl ModelWriter {
         };
 
         // Write header
-        Self::write_header(&mut file, fgen, labels, attrs)?;
+        Self::write_header_pruned(&mut file, &pruned, labels)?;
 
         // Write features
         let off_features = pos_to_u32(file.stream_position()?)?;
-        Self::write_features(&mut file, fgen)?;
+        Self::write_features_pruned(&mut file, &pruned)?;
 
         // Write label dictionary (CQDB)
         let off_labels = pos_to_u32(file.stream_position()?)?;
         Self::write_cqdb(&mut file, labels)?;
 
-        // Write attribute dictionary (CQDB)
+        // Write attribute dictionary (CQDB) - use pruned attrs
         let off_attrs = pos_to_u32(file.stream_position()?)?;
-        Self::write_cqdb(&mut file, attrs)?;
+        Self::write_cqdb(&mut file, &pruned.attrs)?;
 
         // Write label feature references
         Self::align_to_u32(&mut file)?;
         let off_label_refs = pos_to_u32(file.stream_position()?)?;
-        Self::write_label_refs(&mut file, fgen)?;
+        Self::write_label_refs_pruned(&mut file, &pruned)?;
 
         // Write attribute feature references
         Self::align_to_u32(&mut file)?;
         let off_attr_refs = pos_to_u32(file.stream_position()?)?;
-        Self::write_attr_refs(&mut file, fgen)?;
+        Self::write_attr_refs_pruned(&mut file, &pruned)?;
 
         // Update header with correct offsets
         let file_size = pos_to_u32(file.stream_position()?)?;
         file.seek(SeekFrom::Start(0))?;
-        Self::write_header_with_offsets(
+        Self::write_header_with_offsets_pruned(
             &mut file,
-            fgen,
+            &pruned,
             labels,
-            attrs,
             off_features,
             off_labels,
             off_attrs,
@@ -71,58 +172,6 @@ impl ModelWriter {
         Ok(())
     }
 
-    /// Write file header
-    fn write_header(
-        file: &mut File,
-        fgen: &FeatureGenerator,
-        labels: &Dictionary,
-        attrs: &Dictionary,
-    ) -> io::Result<()> {
-        // Write placeholder header (will be updated later)
-        file.write_all(b"lCRF")?; // magic
-        file.write_all(&0u32.to_le_bytes())?; // size (placeholder)
-        file.write_all(b"FOMC")?; // type
-        file.write_all(&100u32.to_le_bytes())?; // version
-        file.write_all(&(fgen.num_features() as u32).to_le_bytes())?;
-        file.write_all(&(labels.len() as u32).to_le_bytes())?;
-        file.write_all(&(attrs.len() as u32).to_le_bytes())?;
-        file.write_all(&0u32.to_le_bytes())?; // off_features (placeholder)
-        file.write_all(&0u32.to_le_bytes())?; // off_labels (placeholder)
-        file.write_all(&0u32.to_le_bytes())?; // off_attrs (placeholder)
-        file.write_all(&0u32.to_le_bytes())?; // off_label_refs (placeholder)
-        file.write_all(&0u32.to_le_bytes())?; // off_attr_refs (placeholder)
-        Ok(())
-    }
-
-    /// Write header with actual offsets
-    #[allow(clippy::too_many_arguments)]
-    fn write_header_with_offsets(
-        file: &mut File,
-        fgen: &FeatureGenerator,
-        labels: &Dictionary,
-        attrs: &Dictionary,
-        off_features: u32,
-        off_labels: u32,
-        off_attrs: u32,
-        off_label_refs: u32,
-        off_attr_refs: u32,
-        file_size: u32,
-    ) -> io::Result<()> {
-        file.write_all(b"lCRF")?; // magic
-        file.write_all(&file_size.to_le_bytes())?; // size
-        file.write_all(b"FOMC")?; // type
-        file.write_all(&100u32.to_le_bytes())?; // version
-        file.write_all(&(fgen.num_features() as u32).to_le_bytes())?;
-        file.write_all(&(labels.len() as u32).to_le_bytes())?;
-        file.write_all(&(attrs.len() as u32).to_le_bytes())?;
-        file.write_all(&off_features.to_le_bytes())?;
-        file.write_all(&off_labels.to_le_bytes())?;
-        file.write_all(&off_attrs.to_le_bytes())?;
-        file.write_all(&off_label_refs.to_le_bytes())?;
-        file.write_all(&off_attr_refs.to_le_bytes())?;
-        Ok(())
-    }
-
     /// Align the file position to a 4-byte boundary with zero padding.
     fn align_to_u32(file: &mut File) -> io::Result<()> {
         let mut pos = file.stream_position()?;
@@ -130,42 +179,6 @@ impl ModelWriter {
             file.write_all(&[0])?;
             pos += 1;
         }
-        Ok(())
-    }
-
-    /// Write features section
-    fn write_features(file: &mut File, fgen: &FeatureGenerator) -> io::Result<()> {
-        // Write chunk header
-        file.write_all(b"FEAT")?; // chunk ID
-
-        // Use checked arithmetic to detect overflow
-        let num_features_u32 = u32::try_from(fgen.num_features()).map_err(|_| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                "number of features does not fit into u32",
-            )
-        })?;
-        let chunk_size_u64 = 12u64 + (num_features_u32 as u64) * 20u64; // header + features
-        let chunk_size_u32 = u32::try_from(chunk_size_u64).map_err(|_| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                "feature chunk size exceeds u32::MAX",
-            )
-        })?;
-        file.write_all(&chunk_size_u32.to_le_bytes())?;
-        file.write_all(&num_features_u32.to_le_bytes())?;
-
-        // Write each feature
-        // Feature weight is stored as a 64-bit IEEE 754 float in little-endian order,
-        // as required by the CRFsuite binary model format.
-        for feature in &fgen.features {
-            let ftype = feature.ftype as u32;
-            file.write_all(&ftype.to_le_bytes())?;
-            file.write_all(&feature.src.to_le_bytes())?;
-            file.write_all(&feature.dst.to_le_bytes())?;
-            file.write_all(&feature.weight.to_le_bytes())?;
-        }
-
         Ok(())
     }
 
@@ -186,13 +199,89 @@ impl ModelWriter {
         Ok(())
     }
 
-    /// Write label feature references
-    fn write_label_refs(file: &mut File, fgen: &FeatureGenerator) -> io::Result<()> {
-        let num_labels = fgen.label_refs.len();
-        // CRFsuite stores the label reference table with two extra entries in addition to
-        // the actual labels (e.g., for special sentinel/BOS/EOS labels required by the
-        // binary model format). We therefore allocate space for `num_labels + 2` entries
-        // in this section rather than just `num_labels`.
+    /// Write file header for pruned model
+    fn write_header_pruned(
+        file: &mut File,
+        pruned: &PrunedModel,
+        labels: &Dictionary,
+    ) -> io::Result<()> {
+        file.write_all(b"lCRF")?;
+        file.write_all(&0u32.to_le_bytes())?;
+        file.write_all(b"FOMC")?;
+        file.write_all(&100u32.to_le_bytes())?;
+        file.write_all(&(pruned.num_features() as u32).to_le_bytes())?;
+        file.write_all(&(labels.len() as u32).to_le_bytes())?;
+        file.write_all(&(pruned.attrs.len() as u32).to_le_bytes())?;
+        file.write_all(&0u32.to_le_bytes())?;
+        file.write_all(&0u32.to_le_bytes())?;
+        file.write_all(&0u32.to_le_bytes())?;
+        file.write_all(&0u32.to_le_bytes())?;
+        file.write_all(&0u32.to_le_bytes())?;
+        Ok(())
+    }
+
+    /// Write header with actual offsets for pruned model
+    #[allow(clippy::too_many_arguments)]
+    fn write_header_with_offsets_pruned(
+        file: &mut File,
+        pruned: &PrunedModel,
+        labels: &Dictionary,
+        off_features: u32,
+        off_labels: u32,
+        off_attrs: u32,
+        off_label_refs: u32,
+        off_attr_refs: u32,
+        file_size: u32,
+    ) -> io::Result<()> {
+        file.write_all(b"lCRF")?;
+        file.write_all(&file_size.to_le_bytes())?;
+        file.write_all(b"FOMC")?;
+        file.write_all(&100u32.to_le_bytes())?;
+        file.write_all(&(pruned.num_features() as u32).to_le_bytes())?;
+        file.write_all(&(labels.len() as u32).to_le_bytes())?;
+        file.write_all(&(pruned.attrs.len() as u32).to_le_bytes())?;
+        file.write_all(&off_features.to_le_bytes())?;
+        file.write_all(&off_labels.to_le_bytes())?;
+        file.write_all(&off_attrs.to_le_bytes())?;
+        file.write_all(&off_label_refs.to_le_bytes())?;
+        file.write_all(&off_attr_refs.to_le_bytes())?;
+        Ok(())
+    }
+
+    /// Write features section for pruned model
+    fn write_features_pruned(file: &mut File, pruned: &PrunedModel) -> io::Result<()> {
+        file.write_all(b"FEAT")?;
+
+        let num_features_u32 = u32::try_from(pruned.num_features()).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "number of features does not fit into u32",
+            )
+        })?;
+        let chunk_size_u64 = 12u64 + (num_features_u32 as u64) * 20u64;
+        let chunk_size_u32 = u32::try_from(chunk_size_u64).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "feature chunk size exceeds u32::MAX",
+            )
+        })?;
+        file.write_all(&chunk_size_u32.to_le_bytes())?;
+        file.write_all(&num_features_u32.to_le_bytes())?;
+
+        for feature in &pruned.features {
+            let ftype = feature.ftype as u32;
+            file.write_all(&ftype.to_le_bytes())?;
+            file.write_all(&feature.src.to_le_bytes())?;
+            file.write_all(&feature.dst.to_le_bytes())?;
+            file.write_all(&feature.weight.to_le_bytes())?;
+        }
+
+        Ok(())
+    }
+
+    /// Write label feature references for pruned model
+    fn write_label_refs_pruned(file: &mut File, pruned: &PrunedModel) -> io::Result<()> {
+        let num_labels = pruned.label_refs.len();
         let total_labels = num_labels
             .checked_add(2)
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "label count overflow"))?;
@@ -203,32 +292,28 @@ impl ModelWriter {
             )
         })?;
 
-        // Write chunk header with checked arithmetic
-        file.write_all(b"LFRF")?; // chunk ID
+        file.write_all(b"LFRF")?;
         let num_labels_u32 = u32::try_from(total_labels).map_err(|_| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
                 "number of labels exceeds u32::MAX",
             )
         })?;
-        let header_size_u64 = 12u64 + (num_labels_u32 as u64) * 4u64; // header + offsets
+        let header_size_u64 = 12u64 + (num_labels_u32 as u64) * 4u64;
         let header_size_u32 = u32::try_from(header_size_u64).map_err(|_| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
                 "label refs header size exceeds u32::MAX",
             )
         })?;
-        // Placeholder size; will be updated after writing all lists, matching CRFsuite.
         file.write_all(&0u32.to_le_bytes())?;
         file.write_all(&num_labels_u32.to_le_bytes())?;
 
-        // Calculate offsets for each label's feature list (absolute offsets)
         let mut current_offset = chunk_start + header_size_u32;
         let mut offsets = vec![0u32; total_labels];
 
-        for (index, label_ref) in fgen.label_refs.iter().enumerate() {
+        for (index, label_ref) in pruned.label_refs.iter().enumerate() {
             offsets[index] = current_offset;
-            // Use checked arithmetic for offset calculation
             let fids_len_u32 = u32::try_from(label_ref.fids.len()).map_err(|_| {
                 io::Error::new(
                     io::ErrorKind::InvalidData,
@@ -247,20 +332,17 @@ impl ModelWriter {
                 .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "offset overflow"))?;
         }
 
-        // Write offset table
         for offset in &offsets {
             file.write_all(&offset.to_le_bytes())?;
         }
 
-        // Write feature ID lists
-        for label_ref in &fgen.label_refs {
+        for label_ref in &pruned.label_refs {
             file.write_all(&(label_ref.fids.len() as u32).to_le_bytes())?;
             for &fid in &label_ref.fids {
                 file.write_all(&fid.to_le_bytes())?;
             }
         }
 
-        // Update chunk size to include header, offsets, and lists
         let end_pos = file.stream_position()?;
         let chunk_size_u64 = end_pos
             .checked_sub(u64::from(chunk_start))
@@ -278,9 +360,9 @@ impl ModelWriter {
         Ok(())
     }
 
-    /// Write attribute feature references
-    fn write_attr_refs(file: &mut File, fgen: &FeatureGenerator) -> io::Result<()> {
-        let num_attrs = fgen.attr_refs.len();
+    /// Write attribute feature references for pruned model
+    fn write_attr_refs_pruned(file: &mut File, pruned: &PrunedModel) -> io::Result<()> {
+        let num_attrs = pruned.attr_refs.len();
         let chunk_start = u32::try_from(file.stream_position()?).map_err(|_| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -288,32 +370,28 @@ impl ModelWriter {
             )
         })?;
 
-        // Write chunk header with checked arithmetic
-        file.write_all(b"AFRF")?; // chunk ID
+        file.write_all(b"AFRF")?;
         let num_attrs_u32 = u32::try_from(num_attrs).map_err(|_| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
                 "number of attrs exceeds u32::MAX",
             )
         })?;
-        let header_size_u64 = 12u64 + (num_attrs_u32 as u64) * 4u64; // header + offsets
+        let header_size_u64 = 12u64 + (num_attrs_u32 as u64) * 4u64;
         let header_size_u32 = u32::try_from(header_size_u64).map_err(|_| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
                 "attr refs header size exceeds u32::MAX",
             )
         })?;
-        // Placeholder size; will be updated after writing all lists, matching CRFsuite.
         file.write_all(&0u32.to_le_bytes())?;
         file.write_all(&num_attrs_u32.to_le_bytes())?;
 
-        // Calculate offsets for each attribute's feature list (absolute offsets)
         let mut current_offset = chunk_start + header_size_u32;
         let mut offsets = Vec::new();
 
-        for attr_ref in &fgen.attr_refs {
+        for attr_ref in &pruned.attr_refs {
             offsets.push(current_offset);
-            // Use checked arithmetic for offset calculation
             let fids_len_u32 = u32::try_from(attr_ref.fids.len()).map_err(|_| {
                 io::Error::new(
                     io::ErrorKind::InvalidData,
@@ -332,20 +410,17 @@ impl ModelWriter {
                 .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "offset overflow"))?;
         }
 
-        // Write offset table
         for offset in &offsets {
             file.write_all(&offset.to_le_bytes())?;
         }
 
-        // Write feature ID lists
-        for attr_ref in &fgen.attr_refs {
+        for attr_ref in &pruned.attr_refs {
             file.write_all(&(attr_ref.fids.len() as u32).to_le_bytes())?;
             for &fid in &attr_ref.fids {
                 file.write_all(&fid.to_le_bytes())?;
             }
         }
 
-        // Update chunk size to include header, offsets, and lists
         let end_pos = file.stream_position()?;
         let chunk_size_u64 = end_pos
             .checked_sub(u64::from(chunk_start))
