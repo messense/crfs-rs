@@ -64,16 +64,18 @@ impl FeatureGenerator {
 
         for inst in instances {
             let seq_len = inst.num_items as usize;
+            let inst_weight = inst.weight;
 
             // Count state features
-            // State feature frequencies are weighted by attribute values (attr.value),
-            // which allows for real-valued feature weights. Transition features are
-            // binary (either present or not), so they use 1.0 for each occurrence.
+            // State feature frequencies are weighted by attribute values (attr.value)
+            // and instance weight, which allows for real-valued feature weights.
+            // Transition features are binary (either present or not), so they use
+            // 1.0 * inst_weight for each occurrence.
             for t in 0..seq_len {
                 let label = inst.labels[t];
                 for attr in &inst.items[t] {
                     let key = (FeatureType::State as u32, attr.id, label);
-                    *state_counts.entry(key).or_insert(0.0) += attr.value;
+                    *state_counts.entry(key).or_insert(0.0) += attr.value * inst_weight;
                 }
             }
 
@@ -82,7 +84,7 @@ impl FeatureGenerator {
                 let prev_label = inst.labels[t - 1];
                 let label = inst.labels[t];
                 let key = (FeatureType::Transition as u32, prev_label, label);
-                *trans_counts.entry(key).or_insert(0.0) += 1.0;
+                *trans_counts.entry(key).or_insert(0.0) += inst_weight;
             }
         }
 
