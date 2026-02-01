@@ -19,7 +19,7 @@ mod passive_aggressive;
 pub use self::arow::ArowParams;
 pub use self::averaged_perceptron::AveragedPerceptronParams;
 pub use self::l2sgd::L2SgdParams;
-pub use self::lbfgs::LbfgsParams;
+pub use self::lbfgs::{LbfgsParams, LineSearchAlgorithm};
 pub use self::passive_aggressive::{PaType, PassiveAggressiveParams};
 
 fn shuffle_indices(indices: &mut [usize], rng: &mut StdRng) {
