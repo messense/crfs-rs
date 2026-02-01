@@ -223,7 +223,10 @@ impl Trainer<L2Sgd> {
 
         let mut rng = match self.params.shuffle_seed() {
             Some(seed) => StdRng::seed_from_u64(seed),
-            None => StdRng::from_entropy(),
+            None => {
+                let mut thread_rng = rand::rng();
+                StdRng::from_rng(&mut thread_rng)
+            }
         };
 
         // Calibration phase: find optimal learning rate

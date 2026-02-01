@@ -46,11 +46,9 @@ impl PrunedModel {
                 .iter()
                 .any(|&fid| fmap[fid as usize].is_some());
 
-            if has_surviving_feature {
-                if let Some(name) = attrs.get_name(old_aid as u32) {
-                    let new_aid = pruned_attrs.get_or_insert(name);
-                    amap[old_aid] = Some(new_aid);
-                }
+            if has_surviving_feature && let Some(name) = attrs.get_name(old_aid as u32) {
+                let new_aid = pruned_attrs.get_or_insert(name);
+                amap[old_aid] = Some(new_aid);
             }
         }
 
@@ -60,10 +58,10 @@ impl PrunedModel {
         for feature in &mut pruned_features {
             if feature.ftype == FeatureType::State {
                 let old_aid = feature.src as usize;
-                if old_aid < amap.len() {
-                    if let Some(new_aid) = amap[old_aid] {
-                        feature.src = new_aid;
-                    }
+                if old_aid < amap.len()
+                    && let Some(new_aid) = amap[old_aid]
+                {
+                    feature.src = new_aid;
                 }
             }
             // Transition features keep their src (prev_label ID) unchanged

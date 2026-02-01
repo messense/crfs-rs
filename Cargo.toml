@@ -1,6 +1,6 @@
 [package]
 name = "crfs"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["messense <messense@icloud.com>"]
 description = "Pure Rust port of CRFsuite: a fast implementation of Conditional Random Fields (CRFs)"
 edition = "2024"
@@ -19,9 +19,9 @@ bitflags = "2.10.0"
 bstr = "1.0.0"
 cqdb = "0.5"
 liblbfgs = "0.1"
-rand = "0.8"
+rand = "0.9"
 
 [dev-dependencies]
 crfsuite = "0.3.1"
-criterion = "0.4.0"
+criterion = "0.8.1"
 tempfile = "3"

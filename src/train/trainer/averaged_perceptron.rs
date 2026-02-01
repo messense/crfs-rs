@@ -103,7 +103,10 @@ impl Trainer<AveragedPerceptron> {
         let mut order: Vec<usize> = (0..self.instances.len()).collect();
         let mut rng = match self.params.shuffle_seed() {
             Some(seed) => StdRng::seed_from_u64(seed),
-            None => StdRng::from_entropy(),
+            None => {
+                let mut thread_rng = rand::rng();
+                StdRng::from_rng(&mut thread_rng)
+            }
         };
 
         if verbose {
