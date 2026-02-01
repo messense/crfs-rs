@@ -23,7 +23,7 @@ impl Default for ArowParams {
             variance: 1.0,
             gamma: 1.0,
             max_iterations: 100,
-            epsilon: 1e-5,
+            epsilon: 0.0,
             shuffle_seed: None,
         }
     }

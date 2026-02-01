@@ -20,7 +20,7 @@ impl Default for LbfgsParams {
             c1: 0.0,
             c2: 1.0,
             num_memories: 6,
-            max_iterations: 100,
+            max_iterations: usize::MAX,
             epsilon: 1e-5,
         }
     }

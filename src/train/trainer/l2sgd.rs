@@ -26,9 +26,9 @@ impl Default for L2SgdParams {
     fn default() -> Self {
         Self {
             c2: 1.0,
-            max_iterations: 100,
+            max_iterations: 1000,
             period: 10,
-            delta: 1e-5,
+            delta: 1e-6,
             calibration_eta: 0.1,
             calibration_rate: 2.0,
             calibration_samples: 1000,
