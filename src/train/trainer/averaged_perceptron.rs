@@ -19,7 +19,7 @@ impl Default for AveragedPerceptronParams {
     fn default() -> Self {
         Self {
             max_iterations: 100,
-            epsilon: 1e-5,
+            epsilon: 0.0,
             shuffle_seed: None,
         }
     }
