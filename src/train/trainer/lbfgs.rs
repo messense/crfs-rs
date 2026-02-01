@@ -4,6 +4,31 @@ use super::super::crf_context::ForwardBackwardContext;
 use super::super::feature_gen::FeatureGenerator;
 use super::{Lbfgs, Trainer, TrainingAlgorithm};
 
+/// Line search algorithm for L-BFGS optimization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LineSearchAlgorithm {
+    /// More-Thuente line search (default, CRFsuite default)
+    #[default]
+    MoreThuente,
+    /// Backtracking with Armijo condition
+    BacktrackingArmijo,
+    /// Backtracking with Wolfe condition
+    BacktrackingWolfe,
+    /// Backtracking with strong Wolfe condition
+    BacktrackingStrongWolfe,
+}
+
+impl LineSearchAlgorithm {
+    fn to_liblbfgs_str(self) -> &'static str {
+        match self {
+            Self::MoreThuente => "MoreThuente",
+            Self::BacktrackingArmijo => "BacktrackingArmijo",
+            Self::BacktrackingWolfe => "BacktrackingWolfe",
+            Self::BacktrackingStrongWolfe => "BacktrackingStrongWolfe",
+        }
+    }
+}
+
 /// L-BFGS training parameters.
 #[derive(Debug, Clone)]
 pub struct LbfgsParams {
@@ -12,6 +37,10 @@ pub struct LbfgsParams {
     num_memories: usize,
     max_iterations: usize,
     epsilon: f64,
+    period: usize,
+    delta: f64,
+    linesearch: LineSearchAlgorithm,
+    max_linesearch: usize,
 }
 
 impl Default for LbfgsParams {
@@ -22,6 +51,10 @@ impl Default for LbfgsParams {
             num_memories: 6,
             max_iterations: usize::MAX,
             epsilon: 1e-5,
+            period: 10,
+            delta: 1e-5,
+            linesearch: LineSearchAlgorithm::default(),
+            max_linesearch: 20,
         }
     }
 }
@@ -101,6 +134,59 @@ impl LbfgsParams {
         self.epsilon = epsilon;
         Ok(())
     }
+
+    pub fn period(&self) -> usize {
+        self.period
+    }
+
+    pub fn set_period(&mut self, period: usize) -> io::Result<()> {
+        if period == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "period must be positive",
+            ));
+        }
+        self.period = period;
+        Ok(())
+    }
+
+    pub fn delta(&self) -> f64 {
+        self.delta
+    }
+
+    pub fn set_delta(&mut self, delta: f64) -> io::Result<()> {
+        if delta < 0.0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "delta must be non-negative",
+            ));
+        }
+        self.delta = delta;
+        Ok(())
+    }
+
+    pub fn linesearch(&self) -> LineSearchAlgorithm {
+        self.linesearch
+    }
+
+    pub fn set_linesearch(&mut self, linesearch: LineSearchAlgorithm) {
+        self.linesearch = linesearch;
+    }
+
+    pub fn max_linesearch(&self) -> usize {
+        self.max_linesearch
+    }
+
+    pub fn set_max_linesearch(&mut self, max_linesearch: usize) -> io::Result<()> {
+        if max_linesearch == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "max_linesearch must be positive",
+            ));
+        }
+        self.max_linesearch = max_linesearch;
+        Ok(())
+    }
 }
 
 impl TrainingAlgorithm for Lbfgs {
@@ -138,6 +224,10 @@ impl Trainer<Lbfgs> {
         let c2 = self.params.c2();
         let max_iterations = self.params.max_iterations();
         let epsilon = self.params.epsilon();
+        let period = self.params.period();
+        let delta = self.params.delta();
+        let linesearch = self.params.linesearch();
+        let max_linesearch = self.params.max_linesearch();
         let verbose = self.verbose;
 
         // Objective function: negative log-likelihood + L2 regularization
@@ -207,7 +297,10 @@ impl Trainer<Lbfgs> {
         // memory vectors used by the L-BFGS algorithm. The library uses its default.
         let mut lbfgs = liblbfgs::lbfgs()
             .with_max_iterations(max_iterations)
-            .with_epsilon(epsilon);
+            .with_epsilon(epsilon)
+            .with_fx_delta(delta, period)
+            .with_linesearch_algorithm(linesearch.to_liblbfgs_str())
+            .with_max_linesearch(max_linesearch);
 
         // Add L1 regularization if c1 > 0
         if c1 > 0.0 {
