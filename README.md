@@ -13,7 +13,7 @@ Add it to your ``Cargo.toml``:
 
 ```toml
 [dependencies]
-crfs = "0.3"
+crfs = "0.4"
 ```
 
 ## Performance
