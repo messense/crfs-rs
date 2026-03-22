@@ -17,7 +17,7 @@ harness = false
 anyhow = "1.0"
 bitflags = "2.10.0"
 bstr = "1.0.0"
-cqdb = "0.6"
+cqdb = "0.7"
 liblbfgs = "0.1"
 rand = "0.9"
 
