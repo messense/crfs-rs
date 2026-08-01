@@ -38,7 +38,7 @@ jobs:
             target: ppc64le
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: 3.x
       - name: Build wheels
@@ -76,7 +76,7 @@ jobs:
             target: armv7
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: 3.x
       - name: Build wheels
@@ -115,7 +115,7 @@ jobs:
             python_arch: arm64
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: 3.13
           architecture: ${{ matrix.platform.python_arch }}
@@ -142,7 +142,7 @@ jobs:
             target: aarch64
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: 3.x
       - name: Build wheels
